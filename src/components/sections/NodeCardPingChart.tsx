@@ -103,12 +103,6 @@ export function NodeCardPingChart({
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-between text-xs">
-        <span>延迟统计 ({cardPingChartHours}h)</span>
-        <span className="text-secondary-foreground">
-          {task?.name || cardPingChartTaskName || "Ping"}
-        </span>
-      </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="rounded-md bg-(--accent-a3) px-2 py-1.5">
           <div className="flex justify-between gap-2">
