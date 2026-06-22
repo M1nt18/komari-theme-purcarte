@@ -120,7 +120,7 @@ export function NodeCardPingChart({
               {stats.loss.toFixed(1)}%
             </strong>
           </div>
-          <MiniBars records={bars} loss />
+          <MiniBars records={bars} />
         </div>
       </div>
     </div>
@@ -130,11 +130,9 @@ export function NodeCardPingChart({
 function MiniBars({
   records,
   dense = false,
-  loss = false,
 }: {
   records: PingHistoryRecord[];
   dense?: boolean;
-  loss?: boolean;
 }) {
   if (!records.length) {
     return <div className={dense ? "mt-0.5 h-2" : "mt-1 h-6"} />;
