@@ -38,11 +38,6 @@ function getRecentBars(
     .slice(-Math.max(8, maxBars));
 }
 
-function getLatencyHeight(value: number): number {
-  if (value < 0) return 6;
-  return Math.max(7, Math.min(24, 24 - value / 18));
-}
-
 export function NodeCardPingChart({
   node,
   compact = false,
@@ -106,7 +101,7 @@ export function NodeCardPingChart({
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="rounded-md bg-(--accent-a3) px-2 py-1.5">
           <div className="flex justify-between gap-2">
-            <span>Latency</span>
+            <span>延迟</span>
             <strong className="text-(--accent-11)">
               {stats.latestValue !== null
                 ? `${Math.round(stats.latestValue)} ms`
@@ -152,7 +147,7 @@ function MiniBars({
       }`}>
       {records.map((record, index) => {
         const failed = record.value < 0;
-        const height = loss ? (failed ? 18 : 14) : getLatencyHeight(record.value);
+        const height = failed ? 18 : 14;
         return (
           <span
             key={`${record.time}-${index}`}
