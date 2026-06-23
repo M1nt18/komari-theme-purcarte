@@ -2,7 +2,6 @@ import type { NodeData, PingHistoryRecord, PingTask } from "@/types/node";
 import { useAppConfig } from "@/config";
 import { useLocale } from "@/config/hooks";
 import { usePingChart } from "@/hooks/usePingChart";
-import { calculateTaskStats } from "@/utils/RecordHelper";
 import { ActivityIcon } from "lucide-react";
 
 interface NodeCardPingChartProps {
@@ -10,22 +9,25 @@ interface NodeCardPingChartProps {
   compact?: boolean;
 }
 
+interface PingCardStats {
+  latestValue: number | null;
+  loss: number;
+}
+
 const LOSS_COLOR = "#ef4444";
 const OK_COLOR = "#00d084";
 
-function pickTask(
+function pickTasks(
   tasks: PingTask[],
-  taskName: string,
+  customTaskName: string,
   fallbackTaskId: number
-) {
-  const keyword = taskName.trim();
-  return (
-    (keyword
-      ? tasks.find((task) => task.name.includes(keyword))
-      : undefined) ??
-    tasks.find((task) => task.id === fallbackTaskId) ??
-    tasks[0]
-  );
+): PingTask[] {
+  const keyword = customTaskName.trim();
+  if (!keyword) return tasks;
+
+  let task = tasks.find((item) => item.name.includes(keyword));
+  task ??= tasks.find((item) => item.id === fallbackTaskId) ?? tasks[0];
+  return task ? [task] : [];
 }
 
 function getRecentBars(
@@ -36,6 +38,71 @@ function getRecentBars(
     .slice()
     .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
     .slice(-Math.max(8, maxBars));
+}
+
+function getAverageBars(
+  records: PingHistoryRecord[],
+  maxBars: number
+): PingHistoryRecord[] {
+  const buckets = new Map<number, PingHistoryRecord[]>();
+
+  records.forEach((record) => {
+    const time = new Date(record.time).getTime();
+    const bucket = Math.round(time / 30000) * 30000;
+    buckets.set(bucket, [...(buckets.get(bucket) ?? []), record]);
+  });
+
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([time, bucketRecords]) => {
+      const values = bucketRecords
+        .map((record) => record.value)
+        .filter((value) => value >= 0);
+      const hasLoss = bucketRecords.some((record) => record.value < 0);
+      return {
+        task_id: 0,
+        time: new Date(time).toISOString(),
+        value:
+          hasLoss || !values.length
+            ? -1
+            : values.reduce((sum, value) => sum + value, 0) / values.length,
+      };
+    })
+    .slice(-Math.max(8, maxBars));
+}
+
+function buildDisplayData(
+  records: PingHistoryRecord[],
+  tasks: PingTask[],
+  maxBars: number
+): { bars: PingHistoryRecord[]; stats: PingCardStats } {
+  const taskIds = new Set(tasks.map((task) => task.id));
+  const selectedRecords = records.filter((record) => taskIds.has(record.task_id));
+
+  const latestValues = tasks
+    .map((task) =>
+      selectedRecords
+        .filter((record) => record.task_id === task.id && record.value >= 0)
+        .sort(
+          (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()
+        )[0]?.value
+    )
+    .filter((value): value is number => typeof value === "number");
+
+  const latestValue = latestValues.length
+    ? latestValues.reduce((sum, value) => sum + value, 0) / latestValues.length
+    : null;
+  const successCount = selectedRecords.filter((record) => record.value >= 0)
+    .length;
+  const loss = selectedRecords.length
+    ? (1 - successCount / selectedRecords.length) * 100
+    : 0;
+  const bars =
+    tasks.length > 1
+      ? getAverageBars(selectedRecords, maxBars)
+      : getRecentBars(selectedRecords, maxBars);
+
+  return { bars, stats: { latestValue, loss } };
 }
 
 export function NodeCardPingChart({
@@ -54,21 +121,18 @@ export function NodeCardPingChart({
 
   if (!enableCardPingChart) return null;
 
-  const task = pingHistory?.tasks
-    ? pickTask(
+  const tasks = pingHistory?.tasks
+    ? pickTasks(
         pingHistory.tasks,
         cardPingChartTaskName,
         cardPingChartFallbackTaskId
       )
-    : undefined;
-  const taskRecords =
-    task && pingHistory?.records
-      ? pingHistory.records.filter((record) => record.task_id === task.id)
-      : [];
-  const bars = getRecentBars(taskRecords, cardPingChartMaxBars);
-  const stats = task
-    ? calculateTaskStats(pingHistory?.records ?? [], task.id, null)
-    : { loss: 0, latestValue: null, latestTime: null };
+    : [];
+  const { bars, stats } = buildDisplayData(
+    pingHistory?.records ?? [],
+    tasks,
+    cardPingChartMaxBars
+  );
 
   if (compact) {
     return (

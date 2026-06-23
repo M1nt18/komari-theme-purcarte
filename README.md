@@ -6,6 +6,15 @@
 
 一款为 [Komari](https://github.com/komari-monitor/komari) 设计的磨砂玻璃风格主题。
 
+### 本仓库改动
+
+<img width="270" src="./public/examples/card-ping-preview.png" alt="Card Ping Preview">
+
+- 卡片正面用延迟/丢包小图替换原负载项。
+- 卡片延迟任务支持在设置中选择：`全部平均` 或 Komari 里实际配置的 Ping 任务名。
+- 已内置桌面背景图 `/assets/rF4J0xvWaraSUrGKIhkq20.jpg`。
+- 修复 Windows 打包导致 Linux 解压路径异常的问题，Release zip 可直接导入 Komari。
+
 </div>
 
 ---
@@ -17,7 +26,7 @@
 
 ### 安装与启用
 
-1.  前往 [Releases](https://github.com/Montia37/komari-theme-purcarte/releases) 页面下载最新的 `komari-theme-purcarte.zip` 文件。
+1.  前往 [Releases](https://github.com/M1nt18/komari-theme-purcarte/releases) 页面下载最新的 `komari-theme-purcarte.zip` 文件。
 2.  进入 Komari 后台，上传 `zip` 压缩包并启用本主题。
 
 ### 配置背景图片
@@ -54,6 +63,18 @@
 
 ## ⚙️ 主题配置
 
+### 卡片延迟显示
+
+- **卡片显示延迟图表** (`enableCardPingChart`)
+  - **类型:** `switch`
+  - **默认值:** `true`
+  - **说明:** 启用后卡片正面会显示延迟和丢包小图，替换原来的负载项
+
+- **卡片延迟图表任务** (`cardPingChartTaskName`)
+  - **类型:** `ping-task-select`
+  - **默认值:** `全部平均`
+  - **说明:** 下拉项来自 Komari 已配置的 Ping 任务；选择 `全部平均` 会按所有 Ping 任务计算平均延迟和综合丢包率
+
 #### PurCarte v1.2.1 及以上版本
 
 <img width="80%" src="./public/examples/PurCarte-Theme-Config-New.png" alt="PurCarte Theme Config">
@@ -85,7 +106,7 @@
 
 - **桌面端背景图片链接** (`backgroundImage`)
   - **类型:** `string`
-  - **默认值:** `/assets/Moonlit-Scenery.webp`
+  - **默认值:** `/assets/rF4J0xvWaraSUrGKIhkq20.jpg`
   - **说明:** 目前支持单张背景图片或图片api，使用“|”分隔亮色模式和暗色模式，填写单个则同时用于亮暗模式，请自行测试（eg: `https://test.com/1.png`）
 
 - **移动端背景图片链接** (`backgroundImageMobile`)

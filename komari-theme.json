@@ -2,7 +2,7 @@
     "name": "Komari Theme PurCart",
     "short": "PurCarte",
     "description": "A frosted glass theme for Komari",
-    "version": "1.0.4",
+    "version": "1.1.0",
     "author": "Montia & Gemini",
     "url": "https://github.com/M1nt18/komari-theme-purcarte",
     "preview": "preview.png",
@@ -369,10 +369,10 @@
             },
             {
                 "key": "cardPingChartTaskName",
-                "name": "卡片延迟图表任务名",
-                "type": "string",
-                "default": "电信",
-                "help": "卡片延迟图表优先显示名称包含该文本的 Ping 任务，例如 电信"
+                "name": "卡片延迟图表任务",
+                "type": "ping-task-select",
+                "default": "",
+                "help": "选择卡片展示的 Ping 任务；选择全部平均时，会按当前已配置的全部 Ping 任务计算平均延迟和综合丢包率"
             },
             {
                 "key": "cardPingChartFallbackTaskId",

@@ -97,7 +97,7 @@ export const DEFAULT_CONFIG: ConfigOptions = {
   enableConnectBreaks: false,
   pingChartMaxPoints: 0,
   enableCardPingChart: true,
-  cardPingChartTaskName: "电信",
+  cardPingChartTaskName: "",
   cardPingChartFallbackTaskId: 1,
   cardPingChartHours: 24,
   cardPingChartMaxBars: 28,
@@ -168,7 +168,6 @@ export type AppearanceType = "light" | "dark" | "system";
 export const allAppearance: AppearanceType[] = ["light", "dark", "system"];
 
 export type ViewModeType = "grid" | "table" | "compact";
-
 export type SiteStatus =
   | "public"
   | "private-unauthenticated"

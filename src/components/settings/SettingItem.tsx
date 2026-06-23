@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNodeData } from "@/contexts/NodeDataContext";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -21,15 +22,42 @@ const SettingItem = ({
   editingConfig,
   onConfigChange,
 }: SettingItemProps) => {
+  const { nodes, getPingHistory } = useNodeData();
   const defaultValue = item.default;
   const currentValue =
     editingConfig[item.key as keyof ConfigOptions] ?? defaultValue;
   const isModified = currentValue !== defaultValue;
   const [localValue, setLocalValue] = useState(currentValue);
+  const [pingTasks, setPingTasks] = useState<string[]>([]);
 
   useEffect(() => {
     setLocalValue(currentValue);
   }, [currentValue]);
+
+  useEffect(() => {
+    if (item.type !== "ping-task-select") return;
+    let cancelled = false;
+
+    const loadPingTasks = async () => {
+      for (const node of nodes) {
+        const history = await getPingHistory(node.uuid, 1);
+        const names =
+          history?.tasks
+            ?.map((task) => task.name)
+            .filter((name): name is string => Boolean(name)) ?? [];
+        if (names.length && !cancelled) {
+          setPingTasks(Array.from(new Set(names)));
+          return;
+        }
+      }
+      if (!cancelled) setPingTasks([]);
+    };
+
+    loadPingTasks();
+    return () => {
+      cancelled = true;
+    };
+  }, [getPingHistory, item.type, nodes]);
 
   const handleBlur = () => {
     if (item.type === "number") {
@@ -91,6 +119,28 @@ const SettingItem = ({
             </SelectContent>
           </Select>
         );
+      case "ping-task-select":
+        return (
+          <Select
+            value={(localValue as string) || "__average__"}
+            onValueChange={(value) => {
+              const nextValue = value === "__average__" ? "" : value;
+              setLocalValue(nextValue);
+              onConfigChange(item.key, nextValue);
+            }}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__average__">全部平均</SelectItem>
+              {pingTasks.map((taskName) => (
+                <SelectItem key={taskName} value={taskName}>
+                  {taskName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
       default:
         return null;
     }
@@ -100,7 +150,11 @@ const SettingItem = ({
     return <h3 className="text-lg font-semibold mt-4 mb-2">{item.name}</h3>;
   }
 
-  if (item.type === "switch" || item.type === "select") {
+  if (
+    item.type === "switch" ||
+    item.type === "select" ||
+    item.type === "ping-task-select"
+  ) {
     return (
       <div className="mb-4 flex items-center justify-between">
         <div>
