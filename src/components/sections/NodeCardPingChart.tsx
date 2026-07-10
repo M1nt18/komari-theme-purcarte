@@ -2,6 +2,7 @@ import type { NodeData, PingHistoryRecord, PingTask } from "@/types/node";
 import { useAppConfig } from "@/config";
 import { useLocale } from "@/config/hooks";
 import { usePingChart } from "@/hooks/usePingChart";
+import { calculateTaskStats } from "@/utils/RecordHelper";
 import { ActivityIcon } from "lucide-react";
 
 interface NodeCardPingChartProps {
@@ -12,6 +13,7 @@ interface NodeCardPingChartProps {
 interface PingCardStats {
   latestValue: number | null;
   loss: number;
+  missing: number;
 }
 
 const LOSS_COLOR = "#ef4444";
@@ -30,19 +32,48 @@ function pickTasks(
   return task ? [task] : [];
 }
 
-function getRecentBars(
+function aggregateBucket(records: PingHistoryRecord[]): PingHistoryRecord {
+  const values = records
+    .map((record) => record.value)
+    .filter((value) => value >= 0);
+  const hasLoss = records.some((record) => record.value < 0);
+  const middle = records[Math.floor(records.length / 2)];
+
+  return {
+    task_id: middle?.task_id ?? 0,
+    time: middle?.time ?? records[0]?.time,
+    value:
+      hasLoss || !values.length
+        ? -1
+        : values.reduce((sum, value) => sum + value, 0) / values.length,
+  };
+}
+
+function sampleBars(
   records: PingHistoryRecord[],
   maxBars: number
 ): PingHistoryRecord[] {
-  return records
+  const sorted = records
     .slice()
-    .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
-    .slice(-Math.max(8, maxBars));
+    .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+  const limit = Math.max(8, maxBars);
+
+  if (sorted.length <= limit) return sorted;
+
+  const buckets = Array.from({ length: limit }, () => [] as PingHistoryRecord[]);
+  sorted.forEach((record, index) => {
+    const bucketIndex = Math.min(
+      limit - 1,
+      Math.floor((index * limit) / sorted.length)
+    );
+    buckets[bucketIndex].push(record);
+  });
+
+  return buckets.filter((bucket) => bucket.length > 0).map(aggregateBucket);
 }
 
 function getAverageBars(
-  records: PingHistoryRecord[],
-  maxBars: number
+  records: PingHistoryRecord[]
 ): PingHistoryRecord[] {
   const buckets = new Map<number, PingHistoryRecord[]>();
 
@@ -67,14 +98,14 @@ function getAverageBars(
             ? -1
             : values.reduce((sum, value) => sum + value, 0) / values.length,
       };
-    })
-    .slice(-Math.max(8, maxBars));
+    });
 }
 
 function buildDisplayData(
   records: PingHistoryRecord[],
   tasks: PingTask[],
-  maxBars: number
+  maxBars: number,
+  hours: number
 ): { bars: PingHistoryRecord[]; stats: PingCardStats } {
   const taskIds = new Set(tasks.map((task) => task.id));
   const selectedRecords = records.filter((record) => taskIds.has(record.task_id));
@@ -92,17 +123,35 @@ function buildDisplayData(
   const latestValue = latestValues.length
     ? latestValues.reduce((sum, value) => sum + value, 0) / latestValues.length
     : null;
-  const successCount = selectedRecords.filter((record) => record.value >= 0)
-    .length;
-  const loss = selectedRecords.length
-    ? (1 - successCount / selectedRecords.length) * 100
+  const taskStats = tasks.map((task) =>
+    calculateTaskStats(records, task.id, null, {
+      intervalSec: task.interval,
+      hours,
+    })
+  );
+  const actualCount = taskStats.reduce((sum, stat) => sum + stat.actualCount, 0);
+  const failedCount = taskStats.reduce((sum, stat) => sum + stat.failedCount, 0);
+  const expectedCount = taskStats.reduce(
+    (sum, stat) => sum + stat.expectedCount,
+    0
+  );
+  const loss = actualCount ? (failedCount / actualCount) * 100 : 0;
+  const missing = expectedCount
+    ? ((expectedCount - actualCount) / expectedCount) * 100
     : 0;
   const bars =
     tasks.length > 1
-      ? getAverageBars(selectedRecords, maxBars)
-      : getRecentBars(selectedRecords, maxBars);
+      ? sampleBars(getAverageBars(selectedRecords), maxBars)
+      : sampleBars(selectedRecords, maxBars);
 
-  return { bars, stats: { latestValue, loss } };
+  return {
+    bars,
+    stats: {
+      latestValue,
+      loss: Math.round(loss * 10) / 10,
+      missing: Math.round(Math.max(0, missing) * 10) / 10,
+    },
+  };
 }
 
 export function NodeCardPingChart({
@@ -131,7 +180,8 @@ export function NodeCardPingChart({
   const { bars, stats } = buildDisplayData(
     pingHistory?.records ?? [],
     tasks,
-    cardPingChartMaxBars
+    cardPingChartMaxBars,
+    cardPingChartHours
   );
 
   if (compact) {
@@ -150,7 +200,10 @@ export function NodeCardPingChart({
             <span
               className={`text-[10px] ${
                 stats.loss > 0 ? "text-red-500" : "text-secondary-foreground"
-              }`}>
+              }`}
+              title={`丢包 ${stats.loss.toFixed(1)}% / 缺测 ${stats.missing.toFixed(
+                1
+              )}%`}>
               {stats.loss.toFixed(1)}%
             </span>
           </div>
@@ -179,10 +232,22 @@ export function NodeCardPingChart({
         <div className="rounded-md bg-(--accent-a3) px-2 py-1.5">
           <div className="flex justify-between gap-2">
             <span>丢包</span>
-            <strong
-              className={stats.loss > 0 ? "text-red-500" : "text-(--accent-11)"}>
-              {stats.loss.toFixed(1)}%
-            </strong>
+            <div className="text-right leading-tight">
+              <strong
+                className={
+                  stats.loss > 0 ? "text-red-500" : "text-(--accent-11)"
+                }>
+                {stats.loss.toFixed(1)}%
+              </strong>
+              <div
+                className={
+                  stats.missing > 0
+                    ? "text-[10px] text-amber-500"
+                    : "text-[10px] text-secondary-foreground"
+                }>
+                缺测 {stats.missing.toFixed(1)}%
+              </div>
+            </div>
           </div>
           <MiniBars records={bars} />
         </div>

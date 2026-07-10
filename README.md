@@ -10,9 +10,10 @@
 
 <img width="270" src="./public/examples/card-ping-preview.png" alt="Card Ping Preview">
 
-- 卡片正面用延迟/丢包小图替换原负载项。
+- 卡片正面用延迟/丢包/缺测小图替换原负载项。
+- 丢包率只统计已有 Ping 记录中的失败结果，缺测率单独按任务间隔估算，避免把探针未采集到的数据误判为线路丢包。
 - 卡片延迟任务支持在设置中选择：`全部平均` 或 Komari 里实际配置的 Ping 任务名。
-- 已内置桌面背景图 `/assets/rF4J0xvWaraSUrGKIhkq20.jpg`。
+- 已内置桌面背景图 `/themes/PurCarte/dist/purcarte-assets/rF4J0xvWaraSUrGKIhkq20.jpg`。
 - 修复 Windows 打包导致 Linux 解压路径异常的问题，Release zip 可直接导入 Komari。
 
 </div>
@@ -73,7 +74,7 @@
 - **卡片延迟图表任务** (`cardPingChartTaskName`)
   - **类型:** `ping-task-select`
   - **默认值:** `全部平均`
-  - **说明:** 下拉项来自 Komari 已配置的 Ping 任务；选择 `全部平均` 会按所有 Ping 任务计算平均延迟和综合丢包率
+  - **说明:** 下拉项来自 Komari 已配置的 Ping 任务；选择全部平均时，会按全部任务计算平均延迟，并分别展示丢包率和缺测率
 
 #### PurCarte v1.2.1 及以上版本
 
@@ -106,7 +107,7 @@
 
 - **桌面端背景图片链接** (`backgroundImage`)
   - **类型:** `string`
-  - **默认值:** `/assets/rF4J0xvWaraSUrGKIhkq20.jpg`
+  - **默认值:** `/themes/PurCarte/dist/purcarte-assets/rF4J0xvWaraSUrGKIhkq20.jpg`
   - **说明:** 目前支持单张背景图片或图片api，使用“|”分隔亮色模式和暗色模式，填写单个则同时用于亮暗模式，请自行测试（eg: `https://test.com/1.png`）
 
 - **移动端背景图片链接** (`backgroundImageMobile`)
@@ -121,7 +122,7 @@
 
 - **桌面端视频背景链接** (`videoBackgroundUrl`)
   - **类型:** `string`
-  - **默认值:** `/assets/LanternRivers_1080p15fps2Mbps3s.mp4`
+  - **默认值:** `/themes/PurCarte/dist/purcarte-assets/LanternRivers_1080p15fps2Mbps3s.mp4`
   - **说明:** 视频背景链接（eg: `https://test.com/1.mp4`），使用“|”分隔亮色模式和暗色模式，填写单个则同时用于亮暗模式，建议使用无声视频，且视频文件较大时可能会影响加载速度
 
 - **移动端视频背景链接** (`videoBackgroundUrlMobile`)
@@ -204,7 +205,7 @@
 
 - **Logo 图片链接** (`logoUrl`)
   - **类型:** `string`
-  - **默认值:** `/assets/logo.png`
+  - **默认值:** `/themes/PurCarte/dist/purcarte-assets/logo.png`
   - **说明:** Logo 图片链接（eg: `https://test.com/logo.png`）
 
 - **启用标题栏标题** (`enableTitle`)

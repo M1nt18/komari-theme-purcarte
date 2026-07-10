@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd());
 
   return {
+    base: "/themes/PurCarte/dist/",
     plugins: [
       react(),
       tailwindcss(),
@@ -31,13 +32,13 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
-      assetsDir: "assets",
+      assetsDir: "purcarte-assets",
       outDir: "dist",
       rollupOptions: {
         output: {
           // go embed ignore files start with '_'
-          chunkFileNames: "assets/chunk-[name]-[hash].js",
-          entryFileNames: "assets/entry-[name]-[hash].js",
+          chunkFileNames: "purcarte-assets/chunk-[name]-[hash].js",
+          entryFileNames: "purcarte-assets/entry-[name]-[hash].js",
           manualChunks: {
             "react-vendor": ["react", "react-dom"],
           },

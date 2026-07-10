@@ -463,14 +463,43 @@ export function sampleDataByRetention(
  * @param timeRange - 用于筛选记录的可选时间范围 [开始, 结束]。
  * @returns 包含丢包率和最新值的对象。
  */
+export interface PingTaskStats {
+  loss: number;
+  missing: number;
+  latestValue: number | null;
+  latestTime: string | null;
+  actualCount: number;
+  failedCount: number;
+  expectedCount: number;
+}
+
+export interface PingTaskStatsOptions {
+  intervalSec?: number;
+  hours?: number;
+}
+
+function roundPercent(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function getTimeMs(time: string): number {
+  const value = new Date(time).getTime();
+  return Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * 根据 ping 历史记录计算任务统计数据。
+ * 丢包率只统计已有记录中的失败探测；缺测率按任务间隔估算应有记录与实际记录的差额。
+ */
 export function calculateTaskStats(
   records: { time: string; task_id: number; value: number }[],
   taskId: number,
-  timeRange: [number, number] | null
-): { loss: number; latestValue: number | null; latestTime: string | null } {
+  timeRange: [number, number] | null,
+  options: PingTaskStatsOptions = {}
+): PingTaskStats {
   const relevantRecords = timeRange
     ? records.filter((rec) => {
-        const t = new Date(rec.time).getTime();
+        const t = getTimeMs(rec.time);
         return t >= timeRange[0] && t <= timeRange[1];
       })
     : records;
@@ -478,10 +507,44 @@ export function calculateTaskStats(
   const taskRecords =
     relevantRecords?.filter((rec) => rec.task_id === taskId) || [];
 
-  const totalPings = taskRecords.length;
+  const actualCount = taskRecords.length;
+  const failedCount = taskRecords.filter((rec) => rec.value < 0).length;
   const successfulPings = taskRecords.filter((rec) => rec.value >= 0);
-  const loss =
-    totalPings > 0 ? (1 - successfulPings.length / totalPings) * 100 : 0;
+  const loss = actualCount > 0 ? (failedCount / actualCount) * 100 : 0;
+
+  const intervalMs =
+    options.intervalSec && options.intervalSec > 0
+      ? options.intervalSec * 1000
+      : 0;
+  let expectedCount = actualCount;
+
+  if (intervalMs > 0) {
+    const validTimes = relevantRecords
+      .map((rec) => getTimeMs(rec.time))
+      .filter((time) => time > 0);
+    let start = timeRange?.[0] ?? 0;
+    let end = timeRange?.[1] ?? 0;
+
+    if (!timeRange && validTimes.length > 0) {
+      end = Math.max(...validTimes);
+      start =
+        options.hours && options.hours > 0
+          ? end - options.hours * 3600_000
+          : Math.min(...validTimes);
+    } else if (!timeRange && options.hours && options.hours > 0) {
+      end = Date.now();
+      start = end - options.hours * 3600_000;
+    }
+
+    const durationMs = Math.max(0, end - start);
+    if (durationMs > 0) {
+      expectedCount = Math.max(actualCount, Math.ceil(durationMs / intervalMs));
+    }
+  }
+
+  const missingCount = Math.max(0, expectedCount - actualCount);
+  const missing =
+    expectedCount > 0 ? (missingCount / expectedCount) * 100 : 0;
 
   let latestValue: number | null = null;
   let latestTime: string | null = null;
@@ -493,5 +556,13 @@ export function calculateTaskStats(
     latestTime = latestRecord.time;
   }
 
-  return { loss, latestValue, latestTime };
+  return {
+    loss: roundPercent(loss),
+    missing: roundPercent(missing),
+    latestValue,
+    latestTime,
+    actualCount,
+    failedCount,
+    expectedCount,
+  };
 }

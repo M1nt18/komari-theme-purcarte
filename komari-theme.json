@@ -35,7 +35,7 @@
                 "key": "backgroundImage",
                 "name": "桌面端背景图片链接",
                 "type": "string",
-                "default": "/assets/rF4J0xvWaraSUrGKIhkq20.jpg",
+                "default": "/themes/PurCarte/dist/purcarte-assets/rF4J0xvWaraSUrGKIhkq20.jpg",
                 "help": "目前支持单张背景图片或图片api，使用“|”分隔亮色模式和暗色模式，填写单个则同时用于亮暗模式，请自行测试（eg: https://test.com/1.png）"
             },
             {
@@ -56,7 +56,7 @@
                 "key": "videoBackgroundUrl",
                 "name": "桌面端视频背景链接",
                 "type": "string",
-                "default": "/assets/LanternRivers_1080p15fps2Mbps3s.mp4",
+                "default": "/themes/PurCarte/dist/purcarte-assets/LanternRivers_1080p15fps2Mbps3s.mp4",
                 "help": "视频背景链接（eg: https://test.com/1.mp4），使用“|”分隔亮色模式和暗色模式，填写单个则同时用于亮暗模式，建议使用无声视频，且视频文件较大时可能会影响加载速度"
             },
             {
@@ -174,7 +174,7 @@
                 "name": "Logo 图片链接",
                 "type": "string",
                 "required": false,
-                "default": "/assets/logo.png",
+                "default": "/themes/PurCarte/dist/purcarte-assets/logo.png",
                 "help": "Logo 图片链接（eg: https://test.com/logo.png）"
             },
             {
@@ -372,7 +372,7 @@
                 "name": "卡片延迟图表任务",
                 "type": "ping-task-select",
                 "default": "",
-                "help": "选择卡片展示的 Ping 任务；选择全部平均时，会按当前已配置的全部 Ping 任务计算平均延迟和综合丢包率"
+                "help": "选择卡片展示的 Ping 任务；选择全部平均时，会按当前已配置的全部 Ping 任务计算平均延迟，并分别展示丢包率和缺测率"
             },
             {
                 "key": "cardPingChartFallbackTaskId",
@@ -393,7 +393,7 @@
                 "name": "卡片延迟图表柱数量",
                 "type": "number",
                 "default": 28,
-                "help": "设置卡片小图最多显示多少个历史柱"
+                "help": "设置卡片小图最多显示多少个历史柱；会在上方时间范围内均匀抽样，不再只截取最近的采样点"
             },
             {
                 "name": "UI 自定义",

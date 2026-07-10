@@ -77,7 +77,7 @@ const Flag = React.memo(({ flag, size }: FlagProps) => {
   }
 
   // 构建本地图片路径
-  imgSrc = `/assets/flags/${resolvedFlagFileName}.svg`;
+  imgSrc = `/themes/PurCarte/dist/purcarte-assets/flags/${resolvedFlagFileName}.svg`;
   // 构建 alt 文本和 aria-label
   altText = `地区旗帜: ${resolvedFlagFileName}`;
 

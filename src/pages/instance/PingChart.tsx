@@ -238,20 +238,25 @@ const PingChart = memo(({ node, hours }: PingChartProps) => {
     if (!pingHistory?.records || !sortedTasks.length) return [];
 
     return sortedTasks.map((task) => {
-      const { loss, latestValue, latestTime } = calculateTaskStats(
+      const { loss, missing, latestValue, latestTime } = calculateTaskStats(
         pingHistory.records,
         task.id,
-        timeRange
+        timeRange,
+        {
+          intervalSec: task.interval,
+          hours,
+        }
       );
       return {
         ...task,
         value: latestValue,
         time: latestTime,
         loss: loss,
+        missing: missing,
         color: generateColor(task.name, sortedTasks),
       };
     });
-  }, [pingHistory?.records, sortedTasks, timeRange]);
+  }, [pingHistory?.records, sortedTasks, timeRange, hours]);
 
   return (
     <div className="relative space-y-4 h-full flex flex-col min-h-114">
@@ -298,10 +303,11 @@ const PingChart = memo(({ node, hours }: PingChartProps) => {
                     <div className="flex text-xs font-normal">
                       <span>
                         {task.value !== null
-                          ? `${task.value.toFixed(1)} ms | ${task.loss.toFixed(
-                              1
-                            )}%`
+                          ? `${task.value.toFixed(1)} ms`
                           : t("node.notAvailable")}
+                        {` | 丢包 ${task.loss.toFixed(
+                          1
+                        )}% | 缺测 ${task.missing.toFixed(1)}%`}
                       </span>
                     </div>
                   </div>
