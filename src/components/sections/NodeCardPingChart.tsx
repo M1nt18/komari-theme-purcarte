@@ -17,7 +17,6 @@ interface PingCardStats {
 }
 
 const LOSS_COLOR = "#ef4444";
-const WARNING_COLOR = "#f59e0b";
 const OK_COLOR = "#00d084";
 
 function pickTasks(
@@ -165,6 +164,7 @@ export function NodeCardPingChart({
     cardPingChartFallbackTaskId,
     cardPingChartHours,
     cardPingChartMaxBars,
+    cardPingChartJitterThreshold,
   } = useAppConfig();
   const { t } = useLocale();
   const { loading, pingHistory } = usePingChart(node, cardPingChartHours);
@@ -202,13 +202,15 @@ export function NodeCardPingChart({
               className={`text-[10px] ${
                 stats.loss > 0 ? "text-red-500" : "text-secondary-foreground"
               }`}
-              title={`丢包 ${stats.loss.toFixed(1)}% / 缺测 ${stats.missing.toFixed(
-                1
-              )}%`}>
+              title={`丢包 ${stats.loss.toFixed(1)}%`}>
               {stats.loss.toFixed(1)}%
             </span>
           </div>
-          <LatencyBars records={bars} dense />
+          <LatencyBars
+            records={bars}
+            jitterThreshold={cardPingChartJitterThreshold}
+            dense
+          />
         </div>
       </div>
     );
@@ -228,27 +230,18 @@ export function NodeCardPingChart({
                 : t("node.notAvailable")}
             </strong>
           </div>
-          <LatencyBars records={bars} />
+          <LatencyBars
+            records={bars}
+            jitterThreshold={cardPingChartJitterThreshold}
+          />
         </div>
         <div className="rounded-md bg-(--accent-a3) px-2 py-1.5">
           <div className="flex justify-between gap-2">
             <span>丢包</span>
-            <div className="text-right leading-tight">
-              <strong
-                className={
-                  stats.loss > 0 ? "text-red-500" : "text-(--accent-11)"
-                }>
-                {stats.loss.toFixed(1)}%
-              </strong>
-              <div
-                className={
-                  stats.missing > 0
-                    ? "text-[10px] text-amber-500"
-                    : "text-[10px] text-secondary-foreground"
-                }>
-                缺测 {stats.missing.toFixed(1)}%
-              </div>
-            </div>
+            <strong
+              className={stats.loss > 0 ? "text-red-500" : "text-(--accent-11)"}>
+              {stats.loss.toFixed(1)}%
+            </strong>
           </div>
           <LossBars records={bars} />
         </div>
@@ -257,41 +250,32 @@ export function NodeCardPingChart({
   );
 }
 
-function getLatencyColor(value: number, baseline: number): string {
+function getLatencyColor(value: number, previousValue: number | null, threshold: number): string {
   if (value < 0) return LOSS_COLOR;
-  if (value >= Math.max(800, baseline * 2.5)) return WARNING_COLOR;
-  if (value >= Math.max(350, baseline * 1.8)) return WARNING_COLOR;
+  if (
+    previousValue !== null &&
+    Math.abs(value - previousValue) >= Math.max(1, threshold)
+  ) {
+    return LOSS_COLOR;
+  }
   return OK_COLOR;
-}
-
-function getSuccessfulValues(records: PingHistoryRecord[]): number[] {
-  return records
-    .map((record) => record.value)
-    .filter((value) => value >= 0 && Number.isFinite(value));
-}
-
-function getLatencyBaseline(values: number[]): number {
-  if (!values.length) return 200;
-  const sorted = values.slice().sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)] || 200;
 }
 
 function LatencyBars({
   records,
+  jitterThreshold,
   dense = false,
 }: {
   records: PingHistoryRecord[];
+  jitterThreshold: number;
   dense?: boolean;
 }) {
   if (!records.length) {
     return <div className={dense ? "mt-0.5 h-2" : "mt-1 h-6"} />;
   }
 
-  const values = getSuccessfulValues(records);
-  const maxValue = Math.max(...values, 1);
-  const baseline = getLatencyBaseline(values);
-  const maxHeight = dense ? 8 : 22;
-  const minHeight = dense ? 2 : 4;
+  const height = dense ? 8 : 16;
+  let previousValue: number | null = null;
 
   return (
     <div
@@ -300,16 +284,20 @@ function LatencyBars({
       }`}>
       {records.map((record, index) => {
         const failed = record.value < 0;
-        const ratio = failed ? 1 : Math.max(0.1, record.value / maxValue);
-        const height = Math.round(minHeight + ratio * (maxHeight - minHeight));
+        const currentPrevious = previousValue;
+        if (!failed) previousValue = record.value;
         return (
           <span
             key={`${record.time}-${index}`}
             className={dense ? "w-0.5 rounded-sm" : "w-1 rounded-sm"}
             style={{
               height: `${height}px`,
-              minHeight: `${minHeight}px`,
-              backgroundColor: getLatencyColor(record.value, baseline),
+              minHeight: `${height}px`,
+              backgroundColor: getLatencyColor(
+                record.value,
+                currentPrevious,
+                jitterThreshold
+              ),
               opacity: failed ? 1 : 0.9,
             }}
           />

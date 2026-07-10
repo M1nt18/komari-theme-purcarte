@@ -396,6 +396,13 @@
                 "help": "设置卡片小图最多显示多少个历史柱；会在上方时间范围内均匀抽样，不再只截取最近的采样点"
             },
             {
+                "key": "cardPingChartJitterThreshold",
+                "name": "卡片延迟波动标红阈值",
+                "type": "number",
+                "default": 100,
+                "help": "相邻两次成功延迟的波动达到该数值时，延迟柱显示红色，单位 ms；丢包或超时也会显示红色"
+            },
+            {
                 "name": "UI 自定义",
                 "type": "title"
             },

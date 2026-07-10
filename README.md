@@ -10,8 +10,9 @@
 
 <img width="270" src="./public/examples/card-ping-preview.png" alt="Card Ping Preview">
 
-- 卡片正面用延迟/丢包/缺测小图替换原负载项。
-- 丢包率只统计已有 Ping 记录中的失败结果，缺测率单独按任务间隔估算，避免把探针未采集到的数据误判为线路丢包。
+- 卡片正面用延迟/丢包小图替换原负载项。
+- 丢包率只统计已有 Ping 记录中的失败结果；缺测率用于内部统计口径，不在卡片正面展示。
+- 延迟小图使用等高柱，相邻两次成功延迟波动达到阈值时标红，默认阈值为 100ms。
 - 卡片延迟任务支持在设置中选择：`全部平均` 或 Komari 里实际配置的 Ping 任务名。
 - 已内置桌面背景图 `/themes/PurCarte/dist/purcarte-assets/rF4J0xvWaraSUrGKIhkq20.jpg`。
 - 修复 Windows 打包导致 Linux 解压路径异常的问题，Release zip 可直接导入 Komari。
@@ -74,7 +75,7 @@
 - **卡片延迟图表任务** (`cardPingChartTaskName`)
   - **类型:** `ping-task-select`
   - **默认值:** `全部平均`
-  - **说明:** 下拉项来自 Komari 已配置的 Ping 任务；选择全部平均时，会按全部任务计算平均延迟，并分别展示丢包率和缺测率
+  - **说明:** 下拉项来自 Komari 已配置的 Ping 任务；选择全部平均时，会按全部任务计算平均延迟和丢包率
 
 #### PurCarte v1.2.1 及以上版本
 
