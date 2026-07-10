@@ -92,7 +92,7 @@ export const DEFAULT_CONFIG: ConfigOptions = {
   defaultSelectedGroup: "",
   selectMobileDefaultView: "grid",
   enableSwap: true,
-  pingChartTimeInPreview: 1,
+  pingChartTimeInPreview: 24,
   enableInstanceDetail: true,
   enablePingChart: true,
   enableConnectBreaks: false,

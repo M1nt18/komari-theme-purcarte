@@ -296,7 +296,7 @@
                 "key": "pingChartTimeInPreview",
                 "name": "预览详情的延迟图表时间范围",
                 "type": "number",
-                "default": 1,
+                "default": 24,
                 "help": "设置卡片右上角弹窗详情和表格下拉详情中延迟图表的时间范围，单位为小时，建议值为 1-24，时间范围太大容易导致页面卡顿"
             },
             {
