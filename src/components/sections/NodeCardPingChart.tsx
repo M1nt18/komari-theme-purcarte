@@ -17,6 +17,7 @@ interface PingCardStats {
 }
 
 const LOSS_COLOR = "#ef4444";
+const WARNING_COLOR = "#f59e0b";
 const OK_COLOR = "#00d084";
 
 function pickTasks(
@@ -207,7 +208,7 @@ export function NodeCardPingChart({
               {stats.loss.toFixed(1)}%
             </span>
           </div>
-          <MiniBars records={bars} dense />
+          <LatencyBars records={bars} dense />
         </div>
       </div>
     );
@@ -227,7 +228,7 @@ export function NodeCardPingChart({
                 : t("node.notAvailable")}
             </strong>
           </div>
-          <MiniBars records={bars} />
+          <LatencyBars records={bars} />
         </div>
         <div className="rounded-md bg-(--accent-a3) px-2 py-1.5">
           <div className="flex justify-between gap-2">
@@ -249,14 +250,33 @@ export function NodeCardPingChart({
               </div>
             </div>
           </div>
-          <MiniBars records={bars} />
+          <LossBars records={bars} />
         </div>
       </div>
     </div>
   );
 }
 
-function MiniBars({
+function getLatencyColor(value: number, baseline: number): string {
+  if (value < 0) return LOSS_COLOR;
+  if (value >= Math.max(800, baseline * 2.5)) return WARNING_COLOR;
+  if (value >= Math.max(350, baseline * 1.8)) return WARNING_COLOR;
+  return OK_COLOR;
+}
+
+function getSuccessfulValues(records: PingHistoryRecord[]): number[] {
+  return records
+    .map((record) => record.value)
+    .filter((value) => value >= 0 && Number.isFinite(value));
+}
+
+function getLatencyBaseline(values: number[]): number {
+  if (!values.length) return 200;
+  const sorted = values.slice().sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)] || 200;
+}
+
+function LatencyBars({
   records,
   dense = false,
 }: {
@@ -267,6 +287,12 @@ function MiniBars({
     return <div className={dense ? "mt-0.5 h-2" : "mt-1 h-6"} />;
   }
 
+  const values = getSuccessfulValues(records);
+  const maxValue = Math.max(...values, 1);
+  const baseline = getLatencyBaseline(values);
+  const maxHeight = dense ? 8 : 22;
+  const minHeight = dense ? 2 : 4;
+
   return (
     <div
       className={`flex items-end overflow-hidden ${
@@ -274,16 +300,43 @@ function MiniBars({
       }`}>
       {records.map((record, index) => {
         const failed = record.value < 0;
-        const height = failed ? 18 : 14;
+        const ratio = failed ? 1 : Math.max(0.1, record.value / maxValue);
+        const height = Math.round(minHeight + ratio * (maxHeight - minHeight));
         return (
           <span
             key={`${record.time}-${index}`}
             className={dense ? "w-0.5 rounded-sm" : "w-1 rounded-sm"}
             style={{
-              height: dense ? undefined : `${height}px`,
-              minHeight: dense ? undefined : "4px",
-              backgroundColor: failed ? LOSS_COLOR : OK_COLOR,
+              height: `${height}px`,
+              minHeight: `${minHeight}px`,
+              backgroundColor: getLatencyColor(record.value, baseline),
               opacity: failed ? 1 : 0.9,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function LossBars({ records }: { records: PingHistoryRecord[] }) {
+  if (!records.length) {
+    return <div className="mt-1 h-6" />;
+  }
+
+  return (
+    <div className="mt-1 flex h-6 items-end gap-0.5 overflow-hidden">
+      {records.map((record, index) => {
+        const failed = record.value < 0;
+        return (
+          <span
+            key={`${record.time}-${index}`}
+            className="w-1 rounded-sm"
+            style={{
+              height: failed ? "20px" : "5px",
+              minHeight: "4px",
+              backgroundColor: failed ? LOSS_COLOR : OK_COLOR,
+              opacity: failed ? 1 : 0.45,
             }}
           />
         );
