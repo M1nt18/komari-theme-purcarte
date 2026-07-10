@@ -312,6 +312,8 @@ function LossBars({ records }: { records: PingHistoryRecord[] }) {
     return <div className="mt-1 h-6" />;
   }
 
+  const height = 16;
+
   return (
     <div className="mt-1 flex h-6 items-end gap-0.5 overflow-hidden">
       {records.map((record, index) => {
@@ -321,10 +323,10 @@ function LossBars({ records }: { records: PingHistoryRecord[] }) {
             key={`${record.time}-${index}`}
             className="w-1 rounded-sm"
             style={{
-              height: failed ? "20px" : "5px",
-              minHeight: "4px",
+              height: `${height}px`,
+              minHeight: `${height}px`,
               backgroundColor: failed ? LOSS_COLOR : OK_COLOR,
-              opacity: failed ? 1 : 0.45,
+              opacity: failed ? 1 : 0.75,
             }}
           />
         );
