@@ -45,7 +45,6 @@ export interface ConfigOptions {
   cardPingChartFallbackTaskId: number; // 未匹配任务名时回退的任务 ID
   cardPingChartHours: number; // 卡片延迟图表时间范围，单位为小时
   cardPingChartMaxBars: number; // 卡片延迟图表柱状点数量
-  cardPingChartJitterThreshold: number; // 卡片延迟波动标红阈值，单位 ms
   isShowHWBarInCard: boolean; // 是否在卡片中显示硬件信息栏
   isShowValueUnderProgressBar: boolean; // 是否在流量进度条下方显示数值
   selectTrafficProgressStyle: "circular" | "linear"; // 流量进度条样式
@@ -102,7 +101,6 @@ export const DEFAULT_CONFIG: ConfigOptions = {
   cardPingChartFallbackTaskId: 1,
   cardPingChartHours: 24,
   cardPingChartMaxBars: 28,
-  cardPingChartJitterThreshold: 100,
   isShowHWBarInCard: true,
   isShowValueUnderProgressBar: false,
   selectTrafficProgressStyle: "linear",

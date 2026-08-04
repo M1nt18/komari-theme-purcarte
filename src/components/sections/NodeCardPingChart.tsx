@@ -18,6 +18,17 @@ interface PingCardStats {
 
 const LOSS_COLOR = "#ef4444";
 const OK_COLOR = "#00d084";
+const NO_LATENCY_COLOR = "#94a3b8";
+const LATENCY_COLOR_STOPS = [
+  [30, "#166534"],
+  [60, "#22c55e"],
+  [100, "#86efac"],
+  [150, "#fef08a"],
+  [220, "#facc15"],
+  [350, "#f97316"],
+  [500, "#ef4444"],
+  [600, "#991b1b"],
+] as const;
 
 function pickTasks(
   tasks: PingTask[],
@@ -164,7 +175,6 @@ export function NodeCardPingChart({
     cardPingChartFallbackTaskId,
     cardPingChartHours,
     cardPingChartMaxBars,
-    cardPingChartJitterThreshold,
   } = useAppConfig();
   const { t } = useLocale();
   const { loading, pingHistory } = usePingChart(node, cardPingChartHours);
@@ -206,11 +216,7 @@ export function NodeCardPingChart({
               {stats.loss.toFixed(1)}%
             </span>
           </div>
-          <LatencyBars
-            records={bars}
-            jitterThreshold={cardPingChartJitterThreshold}
-            dense
-          />
+          <LatencyBars records={bars} dense />
         </div>
       </div>
     );
@@ -230,10 +236,7 @@ export function NodeCardPingChart({
                 : t("node.notAvailable")}
             </strong>
           </div>
-          <LatencyBars
-            records={bars}
-            jitterThreshold={cardPingChartJitterThreshold}
-          />
+          <LatencyBars records={bars} />
         </div>
         <div className="rounded-md bg-(--accent-a3) px-2 py-1.5">
           <div className="flex justify-between gap-2">
@@ -250,24 +253,41 @@ export function NodeCardPingChart({
   );
 }
 
-function getLatencyColor(value: number, previousValue: number | null, threshold: number): string {
-  if (value < 0) return LOSS_COLOR;
-  if (
-    previousValue !== null &&
-    Math.abs(value - previousValue) >= Math.max(1, threshold)
-  ) {
-    return LOSS_COLOR;
+function interpolateHexColor(start: string, end: string, ratio: number): string {
+  const startValue = Number.parseInt(start.slice(1), 16);
+  const endValue = Number.parseInt(end.slice(1), 16);
+  const channel = (shift: number) => {
+    const startChannel = (startValue >> shift) & 0xff;
+    const endChannel = (endValue >> shift) & 0xff;
+    return Math.round(startChannel + (endChannel - startChannel) * ratio);
+  };
+
+  return `#${[channel(16), channel(8), channel(0)]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function getLatencyColor(value: number): string {
+  if (value < 0) return NO_LATENCY_COLOR;
+  if (value <= LATENCY_COLOR_STOPS[0][0]) return LATENCY_COLOR_STOPS[0][1];
+
+  for (let index = 1; index < LATENCY_COLOR_STOPS.length; index += 1) {
+    const [endValue, endColor] = LATENCY_COLOR_STOPS[index];
+    const [startValue, startColor] = LATENCY_COLOR_STOPS[index - 1];
+    if (value <= endValue) {
+      const ratio = (value - startValue) / (endValue - startValue);
+      return interpolateHexColor(startColor, endColor, ratio);
+    }
   }
-  return OK_COLOR;
+
+  return LATENCY_COLOR_STOPS[LATENCY_COLOR_STOPS.length - 1][1];
 }
 
 function LatencyBars({
   records,
-  jitterThreshold,
   dense = false,
 }: {
   records: PingHistoryRecord[];
-  jitterThreshold: number;
   dense?: boolean;
 }) {
   if (!records.length) {
@@ -275,7 +295,6 @@ function LatencyBars({
   }
 
   const height = dense ? 8 : 16;
-  let previousValue: number | null = null;
 
   return (
     <div
@@ -284,8 +303,6 @@ function LatencyBars({
       }`}>
       {records.map((record, index) => {
         const failed = record.value < 0;
-        const currentPrevious = previousValue;
-        if (!failed) previousValue = record.value;
         return (
           <span
             key={`${record.time}-${index}`}
@@ -293,12 +310,8 @@ function LatencyBars({
             style={{
               height: `${height}px`,
               minHeight: `${height}px`,
-              backgroundColor: getLatencyColor(
-                record.value,
-                currentPrevious,
-                jitterThreshold
-              ),
-              opacity: failed ? 1 : 0.9,
+              backgroundColor: getLatencyColor(record.value),
+              opacity: failed ? 0.55 : 0.95,
             }}
           />
         );
