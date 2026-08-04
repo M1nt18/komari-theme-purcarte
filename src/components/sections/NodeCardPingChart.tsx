@@ -21,10 +21,9 @@ const OK_COLOR = "#00d084";
 const NO_LATENCY_COLOR = "#94a3b8";
 const LATENCY_COLOR_STOPS = [
   [60, OK_COLOR],
-  [120, "#84cc16"],
-  [220, "#facc15"],
-  [350, "#f97316"],
-  [500, LOSS_COLOR],
+  [100, "#facc15"],
+  [150, "#f97316"],
+  [200, LOSS_COLOR],
 ] as const;
 
 function pickTasks(
