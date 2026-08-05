@@ -18,13 +18,9 @@ interface PingCardStats {
 
 const LOSS_COLOR = "#ef4444";
 const OK_COLOR = "#00d084";
-const NO_LATENCY_COLOR = "#94a3b8";
-const LATENCY_COLOR_STOPS = [
-  [60, OK_COLOR],
-  [100, "#facc15"],
-  [150, "#f97316"],
-  [200, LOSS_COLOR],
-] as const;
+const LIGHT_GREEN_COLOR = "#6ee7b7";
+const LIGHT_YELLOW_COLOR = "#fef08a";
+const YELLOW_COLOR = "#facc15";
 
 function pickTasks(
   tasks: PingTask[],
@@ -249,34 +245,12 @@ export function NodeCardPingChart({
   );
 }
 
-function interpolateHexColor(start: string, end: string, ratio: number): string {
-  const startValue = Number.parseInt(start.slice(1), 16);
-  const endValue = Number.parseInt(end.slice(1), 16);
-  const channel = (shift: number) => {
-    const startChannel = (startValue >> shift) & 0xff;
-    const endChannel = (endValue >> shift) & 0xff;
-    return Math.round(startChannel + (endChannel - startChannel) * ratio);
-  };
-
-  return `#${[channel(16), channel(8), channel(0)]
-    .map((value) => value.toString(16).padStart(2, "0"))
-    .join("")}`;
-}
-
 function getLatencyColor(value: number): string {
-  if (value < 0) return NO_LATENCY_COLOR;
-  if (value <= LATENCY_COLOR_STOPS[0][0]) return LATENCY_COLOR_STOPS[0][1];
-
-  for (let index = 1; index < LATENCY_COLOR_STOPS.length; index += 1) {
-    const [endValue, endColor] = LATENCY_COLOR_STOPS[index];
-    const [startValue, startColor] = LATENCY_COLOR_STOPS[index - 1];
-    if (value <= endValue) {
-      const ratio = (value - startValue) / (endValue - startValue);
-      return interpolateHexColor(startColor, endColor, ratio);
-    }
-  }
-
-  return LATENCY_COLOR_STOPS[LATENCY_COLOR_STOPS.length - 1][1];
+  if (value < 0) return LOSS_COLOR;
+  if (value < 50) return OK_COLOR;
+  if (value < 100) return LIGHT_GREEN_COLOR;
+  if (value < 160) return LIGHT_YELLOW_COLOR;
+  return YELLOW_COLOR;
 }
 
 function LatencyBars({
