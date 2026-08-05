@@ -16,7 +16,8 @@ interface PingCardStats {
   missing: number;
 }
 
-const LOSS_COLOR = "#ef4444";
+const LOSS_COLOR = "#f87171";
+const LOSS_OPACITY = 1;
 const OK_COLOR = "#00d084";
 const LIGHT_GREEN_COLOR = "#6ee7b7";
 const LIGHT_YELLOW_COLOR = "#fef08a";
@@ -281,7 +282,7 @@ function LatencyBars({
               height: `${height}px`,
               minHeight: `${height}px`,
               backgroundColor: getLatencyColor(record.value),
-              opacity: failed ? 0.55 : 0.95,
+              opacity: failed ? LOSS_OPACITY : 0.95,
             }}
           />
         );
@@ -309,7 +310,7 @@ function LossBars({ records }: { records: PingHistoryRecord[] }) {
               height: `${height}px`,
               minHeight: `${height}px`,
               backgroundColor: failed ? LOSS_COLOR : OK_COLOR,
-              opacity: failed ? 1 : 0.75,
+              opacity: failed ? LOSS_OPACITY : 0.75,
             }}
           />
         );
