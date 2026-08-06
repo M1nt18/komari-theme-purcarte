@@ -18,7 +18,7 @@ interface PingCardStats {
 
 const LOSS_COLOR = "#ef4444";
 const LOSS_OPACITY = 1;
-const OK_COLOR = "#00d084";
+const OK_COLOR = "#22c55e";
 const LIGHT_GREEN_COLOR = "#b5e864";
 const YELLOW_COLOR = "#facc15";
 
