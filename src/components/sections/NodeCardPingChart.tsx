@@ -20,7 +20,6 @@ const LOSS_COLOR = "#ef4444";
 const LOSS_OPACITY = 1;
 const OK_COLOR = "#00d084";
 const LIGHT_GREEN_COLOR = "#6ee7b7";
-const LIGHT_YELLOW_COLOR = "#fef08a";
 const YELLOW_COLOR = "#facc15";
 
 function pickTasks(
@@ -249,9 +248,9 @@ export function NodeCardPingChart({
 function getLatencyColor(value: number): string {
   if (value < 0) return LOSS_COLOR;
   if (value < 50) return OK_COLOR;
-  if (value < 100) return LIGHT_GREEN_COLOR;
-  if (value < 160) return LIGHT_YELLOW_COLOR;
-  return YELLOW_COLOR;
+  if (value <= 100) return LIGHT_GREEN_COLOR;
+  if (value <= 200) return YELLOW_COLOR;
+  return LOSS_COLOR;
 }
 
 function LatencyBars({
