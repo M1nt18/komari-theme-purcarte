@@ -21,6 +21,7 @@ const LOSS_OPACITY = 1;
 const OK_COLOR = "#00d084";
 const LIGHT_GREEN_COLOR = "#6ee7b7";
 const YELLOW_COLOR = "#facc15";
+const ORANGE_COLOR = "#ff8904";
 
 function pickTasks(
   tasks: PingTask[],
@@ -250,7 +251,7 @@ function getLatencyColor(value: number): string {
   if (value < 50) return OK_COLOR;
   if (value <= 100) return LIGHT_GREEN_COLOR;
   if (value <= 200) return YELLOW_COLOR;
-  return LOSS_COLOR;
+  return ORANGE_COLOR;
 }
 
 function LatencyBars({
