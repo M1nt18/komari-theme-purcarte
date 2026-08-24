@@ -219,6 +219,11 @@ export const AppContent = () => {
     const header = headerRef.current;
     if (!header) return;
 
+    if (typeof ResizeObserver === "undefined") {
+      setHeaderHeight(header.offsetHeight);
+      return;
+    }
+
     const resizeObserver = new ResizeObserver(() => {
       setHeaderHeight(header.offsetHeight);
     });
@@ -233,6 +238,11 @@ export const AppContent = () => {
   useEffect(() => {
     const footer = footerRef.current;
     if (!footer) return;
+
+    if (typeof ResizeObserver === "undefined") {
+      setFooterHeight(footer.offsetHeight);
+      return;
+    }
 
     const resizeObserver = new ResizeObserver(() => {
       setFooterHeight(footer.offsetHeight);

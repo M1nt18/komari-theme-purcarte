@@ -74,11 +74,21 @@ export const useSystemTheme = (
       setSystemTheme(e.matches ? "dark" : "light");
     };
 
-    // Add listener for system theme changes
-    mediaQuery.addEventListener("change", handleChange);
+    // Add listener for system theme changes, including older mobile Safari.
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", handleChange);
+    } else {
+      mediaQuery.addListener(handleChange);
+    }
 
     // Cleanup
-    return () => mediaQuery.removeEventListener("change", handleChange);
+    return () => {
+      if (mediaQuery.removeEventListener) {
+        mediaQuery.removeEventListener("change", handleChange);
+      } else {
+        mediaQuery.removeListener(handleChange);
+      }
+    };
   }, []);
 
   // Return the resolved theme

@@ -14,6 +14,7 @@ import type { SiteStatus } from "@/config/default";
 
 class ApiService {
   private baseUrl: string;
+  private readonly requestTimeoutMs = 10000;
   public useRpc = false;
   private rpcCallId = 1;
 
@@ -21,12 +22,36 @@ class ApiService {
     this.baseUrl = "";
   }
 
+  private fetchWithTimeout(
+    input: RequestInfo | URL,
+    init: RequestInit = {}
+  ): Promise<Response> {
+    const controller =
+      typeof AbortController !== "undefined" ? new AbortController() : null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const request = fetch(
+      input,
+      controller ? { ...init, signal: controller.signal } : init
+    );
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller?.abort();
+        reject(new Error("API request timed out"));
+      }, this.requestTimeoutMs);
+    });
+
+    return Promise.race([request, timeout]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
+  }
+
   private async rpcCall<T>(
     method: string,
     params: any = {}
   ): Promise<ApiResponse<T>> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/rpc2`, {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/rpc2`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -64,7 +89,7 @@ class ApiService {
     endpoint: string
   ): Promise<ApiResponse<T> | { status: string; message: string; data: any }> {
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`);
+      const response = await this.fetchWithTimeout(`${this.baseUrl}${endpoint}`);
       if (!response.ok) {
         return {
           status: "error",
@@ -210,7 +235,7 @@ class ApiService {
   // 获取用户信息
   async getUserInfo(): Promise<Me | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/me`);
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/me`);
       if (!response.ok) {
         return null;
       }
@@ -227,8 +252,10 @@ class ApiService {
     status: SiteStatus;
     publicInfo: PublicInfo | null;
   }> {
-    const publicInfoResponse = await this.getPublicSettings();
-    const meResponse = await this.getUserInfo();
+    const [publicInfoResponse, meResponse] = await Promise.all([
+      this.getPublicSettings(),
+      this.getUserInfo(),
+    ]);
     const isLoggedIn = meResponse?.logged_in || false;
 
     if (publicInfoResponse) {
