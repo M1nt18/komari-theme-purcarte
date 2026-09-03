@@ -8,12 +8,12 @@
 
 ### 本仓库改动
 
-<img width="270" src="./public/examples/card-ping-preview.png" alt="Card Ping Preview">
+<img width="344" src="./public/examples/card-ping-preview.png" alt="Three-network latency and packet-loss card preview">
 
-- 卡片正面用延迟/丢包小图替换原负载项。
-- 丢包率只统计已有 Ping 记录中的失败结果；缺测率用于内部统计口径，不在卡片正面展示。
-- 延迟小图使用等高柱：低于 50ms 为绿色，50-100ms 为淡绿，100-160ms 为浅黄，160ms 以上为黄色，丢包为红色。
-- 卡片延迟任务支持在设置中选择：`全部平均` 或 Komari 里实际配置的 Ping 任务名。
+- 卡片改为紧凑竖版，CPU、内存、硬盘和已用流量按两列展示。
+- 卡片正面同时展示三条 Ping 线路，优先匹配电信、移动和联通任务，也兼容自定义任务名。
+- 每条线路分别展示延迟与丢包，等高柱按相同采样点严格对齐；缺测不单独展示。
+- 延迟低于 50ms 为绿色，50-170ms 为浅绿色，超过 170ms 为黄色，丢包为红色。
 - 已内置桌面背景图 `/themes/PurCarte/dist/purcarte-assets/rF4J0xvWaraSUrGKIhkq20.jpg`。
 - 修复 Windows 打包导致 Linux 解压路径异常的问题，Release zip 可直接导入 Komari。
 
@@ -75,7 +75,7 @@
 - **卡片延迟图表任务** (`cardPingChartTaskName`)
   - **类型:** `ping-task-select`
   - **默认值:** `全部平均`
-  - **说明:** 下拉项来自 Komari 已配置的 Ping 任务；选择全部平均时，会按全部任务计算平均延迟和丢包率
+  - **说明:** 下拉项来自 Komari 已配置的 Ping 任务，仅用于紧凑视图；网格卡片固定展示前三条线路，并优先匹配电信、移动和联通任务
 
 #### PurCarte v1.2.1 及以上版本
 

@@ -360,7 +360,8 @@ const App = () => {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ConfigProvider>
-      <Router>
+      <Router
+        basename={import.meta.env.DEV ? "/themes/PurCarte/dist" : undefined}>
         <App />
       </Router>
     </ConfigProvider>

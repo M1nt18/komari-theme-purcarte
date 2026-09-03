@@ -215,32 +215,32 @@ export const useNodeCommons = (node: NodeData & { stats?: any }) => {
       : []),
   ];
 
-  // 计算流量使用百分比
+  const trafficUsed = useMemo(() => {
+    if (!stats || !isOnline) return 0;
+
+    if (!node.traffic_limit) {
+      return stats.net_total_up + stats.net_total_down;
+    }
+
+    switch (node.traffic_limit_type) {
+      case "up":
+        return stats.net_total_up;
+      case "down":
+        return stats.net_total_down;
+      case "sum":
+        return stats.net_total_up + stats.net_total_down;
+      case "min":
+        return Math.min(stats.net_total_up, stats.net_total_down);
+      default: // max 或者未设置
+        return Math.max(stats.net_total_up, stats.net_total_down);
+    }
+  }, [node.traffic_limit, node.traffic_limit_type, stats, isOnline]);
+
   const trafficPercentage = useMemo(() => {
     if (!node.traffic_limit || !stats || !isOnline) return 0;
 
-    // 根据流量限制类型确定使用的流量值
-    let usedTraffic = 0;
-    switch (node.traffic_limit_type) {
-      case "up":
-        usedTraffic = stats.net_total_up;
-        break;
-      case "down":
-        usedTraffic = stats.net_total_down;
-        break;
-      case "sum":
-        usedTraffic = stats.net_total_up + stats.net_total_down;
-        break;
-      case "min":
-        usedTraffic = Math.min(stats.net_total_up, stats.net_total_down);
-        break;
-      default: // max 或者未设置
-        usedTraffic = Math.max(stats.net_total_up, stats.net_total_down);
-        break;
-    }
-
-    return (usedTraffic / node.traffic_limit) * 100;
-  }, [node.traffic_limit, node.traffic_limit_type, stats, isOnline]);
+    return (trafficUsed / node.traffic_limit) * 100;
+  }, [node.traffic_limit, stats, isOnline, trafficUsed]);
 
   return {
     stats,
@@ -252,6 +252,7 @@ export const useNodeCommons = (node: NodeData & { stats?: any }) => {
     diskUsage,
     load,
     expired_at,
+    trafficUsed,
     trafficPercentage,
   };
 };

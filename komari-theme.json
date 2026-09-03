@@ -372,7 +372,7 @@
                 "name": "卡片延迟图表任务",
                 "type": "ping-task-select",
                 "default": "",
-                "help": "选择卡片展示的 Ping 任务；选择全部平均时，会按当前已配置的全部 Ping 任务计算平均延迟，并分别展示丢包率和缺测率"
+                "help": "选择紧凑视图展示的 Ping 任务；网格卡片固定展示前三条线路，并优先匹配电信、移动和联通任务"
             },
             {
                 "key": "cardPingChartFallbackTaskId",

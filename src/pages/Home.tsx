@@ -65,11 +65,7 @@ const HomePage: React.FC<HomePageProps> = ({
   const renderContent = () => {
     if (viewMode === "grid") {
       return (
-        <NodeGridContainer
-          nodes={filteredNodes}
-          enableSwap={enableSwap}
-          selectTrafficProgressStyle={selectTrafficProgressStyle}
-        />
+        <NodeGridContainer nodes={filteredNodes} />
       );
     }
     if (viewMode === "compact") {
