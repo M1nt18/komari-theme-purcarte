@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useState, useMemo } from "react";
+import { type ReactNode, useEffect, useState, useMemo, useCallback } from "react";
+import { normalizeSettings } from './settings-model';
 import type { PublicInfo } from "@/types/node.d";
 import { ConfigContext } from "./ConfigContext";
 import { DEFAULT_CONFIG, type ConfigOptions, type SiteStatus } from "./default";
@@ -24,7 +25,7 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
   const [loading, setLoading] = useState(true);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       const { status, publicInfo } = await apiService.checkSiteStatus();
       setSiteStatus(status);
@@ -32,8 +33,7 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
 
       let mergedConfig: ConfigOptions;
       if (publicInfo) {
-        const themeSettings =
-          (publicInfo.theme_settings as ConfigOptions) || {};
+        const themeSettings = normalizeSettings(publicInfo.theme_settings);
         mergedConfig = {
           ...DEFAULT_CONFIG,
           ...themeSettings,
@@ -46,6 +46,8 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
         mergedConfig = DEFAULT_CONFIG;
       }
       setConfig(mergedConfig);
+      apiService.useRpc = false;
+      getWsService().useRpc = false;
 
       // Initialize RPC
       if (mergedConfig.enableJsonRPC2Api) {
@@ -74,11 +76,11 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
       setLoading(false);
       setTimeout(() => setIsLoaded(true), 300);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadConfig();
-  }, []);
+  }, [loadConfig]);
 
   const texts = useMemo(() => {
     const activeConfig = previewConfig
@@ -90,14 +92,13 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
     return deepMerge(baseTexts, otherTexts);
   }, [config, previewConfig]);
 
-  const updatePreviewConfig = (newConfig: Partial<ConfigOptions>) => {
+  const updatePreviewConfig = useCallback((newConfig: Partial<ConfigOptions>) => {
     setPreviewConfig(newConfig);
-  };
+  }, []);
 
-  const reloadConfig = async () => {
-    setLoading(true);
+  const reloadConfig = useCallback(async () => {
     await loadConfig();
-  };
+  }, [loadConfig]);
 
   const activeConfig = useMemo(
     () =>
@@ -117,7 +118,7 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
     <ConfigContext.Provider
       value={{
         ...activeConfig,
-        titleText: config?.titleText || DEFAULT_CONFIG.titleText,
+        titleText: activeConfig.titleText || publicSettings?.sitename || 'Komari',
         publicSettings,
         siteStatus,
         texts,

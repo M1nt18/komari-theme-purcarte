@@ -10,6 +10,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ConfigOptions } from "@/config/default";
+import { numericLimits } from '@/config/settings-model';
+import NodeTaskSettings from './NodeTaskSettings';
 
 interface SettingItemProps {
   item: any;
@@ -61,7 +63,10 @@ const SettingItem = ({
 
   const handleBlur = () => {
     if (item.type === "number") {
-      onConfigChange(item.key, Number(localValue));
+      const bounds=numericLimits[item.key];
+      const parsed=Number(localValue);
+      const value=Number.isFinite(parsed)?bounds?Math.max(bounds[0],Math.min(bounds[1],parsed)):parsed:currentValue;
+      setLocalValue(value);onConfigChange(item.key,value);
     } else {
       onConfigChange(item.key, localValue);
     }
@@ -73,6 +78,9 @@ const SettingItem = ({
         return (
           <Input
             type="number"
+            min={numericLimits[item.key]?.[0]}
+            max={numericLimits[item.key]?.[1]}
+            aria-label={item.name}
             className="theme-card-style"
             value={localValue as number}
             onChange={(e) => setLocalValue(e.target.value)}
@@ -83,6 +91,7 @@ const SettingItem = ({
         return (
           <Input
             type="text"
+            aria-label={item.name}
             className="theme-card-style"
             value={localValue as string}
             onChange={(e) => setLocalValue(e.target.value)}
@@ -92,6 +101,7 @@ const SettingItem = ({
       case "switch":
         return (
           <Switch
+            aria-label={item.name}
             checked={localValue as boolean}
             onCheckedChange={(checked) => {
               setLocalValue(checked);
@@ -107,7 +117,7 @@ const SettingItem = ({
               setLocalValue(value);
               onConfigChange(item.key, value);
             }}>
-            <SelectTrigger>
+            <SelectTrigger aria-label={item.name}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -128,7 +138,7 @@ const SettingItem = ({
               setLocalValue(nextValue);
               onConfigChange(item.key, nextValue);
             }}>
-            <SelectTrigger>
+            <SelectTrigger aria-label={item.name}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -141,6 +151,8 @@ const SettingItem = ({
             </SelectContent>
           </Select>
         );
+      case "node-ping-task-map":
+        return <NodeTaskSettings value={String(localValue||'{}')} onChange={value=>{setLocalValue(value);onConfigChange(item.key,value);}}/>;
       default:
         return null;
     }

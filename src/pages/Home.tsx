@@ -2,7 +2,8 @@ import { Button } from "@/components/ui/button";
 import { StatsBar } from "@/components/sections/StatsBar";
 import { NodeGridContainer } from "@/components/sections/NodeGrid";
 import { NodeCompactContainer } from "@/components/sections/NodeCompact";
-import { NodeTable } from "@/components/sections/NodeTable";
+import { lazy, memo, Suspense } from "react";
+const NodeTable = lazy(() => import("@/components/sections/NodeTable").then(module => ({ default: module.NodeTable })));
 import Loading from "@/components/loading";
 import type { NodeData } from "@/types/node";
 import { useNodeData } from "@/contexts/NodeDataContext";
@@ -20,6 +21,7 @@ import { useLocale } from "@/config/hooks";
 import { cn } from "@/utils";
 
 interface HomePageProps {
+  paused?: boolean;
   searchTerm: string;
   setSearchTerm: (term: string) => void;
   filteredNodes: (NodeData & { stats?: any })[];
@@ -118,7 +120,7 @@ const HomePage: React.FC<HomePageProps> = ({
 
       <div className={cn("space-y-4", viewMode === "table" && "-mx-2 -mb-2")}>
         {filteredNodes.length > 0 ? (
-          renderContent()
+          <Suspense fallback={<Loading />}>{renderContent()}</Suspense>
         ) : (
           <div className="flex flex-grow items-center justify-center">
             <Card className="w-full max-w-md">
@@ -167,4 +169,6 @@ const HomePage: React.FC<HomePageProps> = ({
   );
 };
 
-export default HomePage;
+// Keep the existing cards/scroll state behind the dialog without repainting
+// every background live-data tick. Closing the dialog immediately catches up.
+export default memo(HomePage, (previous, next) => Boolean(previous.paused && next.paused));

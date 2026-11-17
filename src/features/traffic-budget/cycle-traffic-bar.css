@@ -1,0 +1,20 @@
+.ctb { min-width: 0; width: 100%; }
+.ctb-meter { position: relative; height: 8px; }
+.ctb-track { height: 8px; width: 100%; overflow: hidden; border-radius: 99px; background: var(--accent-a4, #b8a9ce33); }
+.ctb-fill { height: 100%; background: #22c55e; border-radius: inherit; transition: width 450ms ease; }
+.ctb-warning .ctb-fill { background: var(--color-yellow-400, #facc15); }
+.ctb-exhausted .ctb-fill { background: #ef4444; }
+.ctb-today { position: absolute; top: -2px; bottom: -2px; width: 2px; transform: translateX(-1px); background: var(--accent-12, #3a265b); box-shadow: 0 0 0 1px #ffffffa6; border-radius: 1px; }
+.ctb-caption { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; color: var(--secondary-foreground, #60596c); font-size: 11px; line-height: 14px; }
+.ctb-caption b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.ctb-unlimited .ctb-track { opacity: .5; }
+.dark .ctb-today { box-shadow: 0 0 0 1px #181622b3; }
+.dark .ctb-caption { color: #f5efff; }
+.dark .ctb-caption > span { background: #241b33b3; padding-inline: 3px; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) { .ctb-fill { transition: none; } }
+
+/* Compensate for the extra percentage/reset row while retaining the live card
+   width and height. Only preview-marked cards receive these spacing changes. */
+[data-cycle-ping-preview] > .grid { padding-block: 3px !important; }
+[data-cycle-ping-preview] > .grid > div { padding-block: 5px !important; }
+[data-cycle-ping-preview] > .grid > div > :first-child { margin-bottom: 2px !important; }

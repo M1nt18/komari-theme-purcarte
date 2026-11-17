@@ -43,7 +43,8 @@ export function DynamicContent({ children }: { children: ReactNode }) {
 
     styles.push(`--main-width: ${mainWidth}vw;`);
     styles.push(`--body-background-url: url(${imageUrl});`);
-    styles.push(`--purcarte-blur: ${blurValue}px;`);
+    styles.push(`--purcarte-blur: ${config.enableBlur?blurValue:0}px;`);
+    styles.push(`--wide-main-width: calc(${Math.min(100,mainWidth+5)}vw - var(--active-settings-width, 0px));`);
 
     const colors = blurBackgroundColor.split("|").map((color) => color.trim());
     if (colors.length >= 2) {

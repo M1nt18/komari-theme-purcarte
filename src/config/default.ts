@@ -9,6 +9,9 @@ export interface ConfigOptions {
   videoBackgroundUrlMobile: string; // 移动端视频背景URL
   backgroundAlignment: string; // 背景对齐方式
   blurValue: number; // 磨砂玻璃模糊值
+  enableBlur: boolean;
+  enableTrafficForecast: boolean;
+  enableUnlockTest: boolean;
   blurBackgroundColor: string; // 磨砂玻璃背景颜色
   enableTransparentTags: boolean; // 是否启用标签透明背景
   tagDefaultColorList: string; // 标签默认颜色列表
@@ -42,11 +45,13 @@ export interface ConfigOptions {
   pingChartMaxPoints: number; // 延迟图表最大点数
   enableCardPingChart: boolean; // 是否在卡片中显示延迟图表
   cardPingChartTaskName: string; // 卡片延迟图表匹配的任务名
+  cardPingChartNodeTasks: string;
   cardPingChartFallbackTaskId: number; // 未匹配任务名时回退的任务 ID
   cardPingChartHours: number; // 卡片延迟图表时间范围，单位为小时
   cardPingChartMaxBars: number; // 卡片延迟图表柱状点数量
   isShowHWBarInCard: boolean; // 是否在卡片中显示硬件信息栏
-  isShowValueUnderProgressBar: boolean; // 是否在流量进度条下方显示数值
+  enableCardExpiryBadge: boolean; // 是否在节点名称右侧显示到期剩余时间
+  enableCardConnectionMetrics: boolean; // 是否在网络信息上方显示 TCP/UDP 连接数
   selectTrafficProgressStyle: "circular" | "linear"; // 流量进度条样式
   enableListItemProgressBar: boolean; // 是否启用列表视图进度条
   customTexts: string; // 自定义UI文本
@@ -56,13 +61,16 @@ export interface ConfigOptions {
 export const DEFAULT_CONFIG: ConfigOptions = {
   isShowConfigEditButtonInLogined: true,
   mainWidth: 85,
-  backgroundImage: "/themes/PurCarte/dist/purcarte-assets/rF4J0xvWaraSUrGKIhkq20.jpg",
+  backgroundImage: "/themes/PurCarte/dist/purcarte-assets/purcarte-background-v1.webp",
   backgroundImageMobile: "",
   enableVideoBackground: false,
   videoBackgroundUrl: "/themes/PurCarte/dist/purcarte-assets/LanternRivers_1080p15fps2Mbps3s.mp4",
   videoBackgroundUrlMobile: "",
   backgroundAlignment: "cover,top",
   blurValue: 10,
+  enableBlur: true,
+  enableTrafficForecast: true,
+  enableUnlockTest: true,
   blurBackgroundColor: "rgba(255, 255, 255, 0.5)|rgba(0, 0, 0, 0.5)",
   enableTransparentTags: true,
   tagDefaultColorList:
@@ -77,7 +85,7 @@ export const DEFAULT_CONFIG: ConfigOptions = {
   enableLogo: false,
   logoUrl: "/themes/PurCarte/dist/purcarte-assets/logo.png",
   enableTitle: true,
-  titleText: "Komari",
+  titleText: "",
   enableSearchButton: true,
   enableAdminButton: true,
   selectedFooterStyle: "fixed",
@@ -98,11 +106,13 @@ export const DEFAULT_CONFIG: ConfigOptions = {
   pingChartMaxPoints: 0,
   enableCardPingChart: true,
   cardPingChartTaskName: "",
+  cardPingChartNodeTasks: "{}",
   cardPingChartFallbackTaskId: 1,
   cardPingChartHours: 24,
-  cardPingChartMaxBars: 28,
+  cardPingChartMaxBars: 20,
   isShowHWBarInCard: true,
-  isShowValueUnderProgressBar: false,
+  enableCardExpiryBadge: true,
+  enableCardConnectionMetrics: true,
   selectTrafficProgressStyle: "linear",
   enableListItemProgressBar: true,
   customTexts: "",

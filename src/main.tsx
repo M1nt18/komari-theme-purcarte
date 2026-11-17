@@ -7,6 +7,10 @@ import {
   useLocation,
 } from "react-router-dom";
 import "./index.css";
+import "./wide-grid.css";
+import "./plugins-live.css";
+import "./live-customizations.css";
+import DetailOverlay from "./components/DetailOverlay";
 import "@radix-ui/themes/styles.css";
 import { Theme } from "@radix-ui/themes";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -21,7 +25,7 @@ import Footer from "@/components/sections/Footer";
 import Loading from "./components/loading";
 import type { StatsBarProps } from "./components/sections/StatsBar";
 import { useNodeListCommons } from "@/hooks/useNodeCommons";
-import SettingsPanel from "./components/settings/SettingsPanel";
+const SettingsPanel = lazy(() => import('./components/settings/SettingsPanel'));
 import { useIsMobile } from "./hooks/useMobile";
 import type { SiteStatus } from "./config/default";
 import { Toaster } from "@/components/ui/sonner";
@@ -52,6 +56,10 @@ const AppRoutes = ({
   footerHeight: number;
 }) => {
   const location = useLocation();
+  const [homeWasVisited, setHomeWasVisited] = useState(location.pathname === "/");
+  useEffect(() => {
+    if (location.pathname === "/") setHomeWasVisited(true);
+  }, [location.pathname]);
   const {
     loading,
     groups,
@@ -118,47 +126,11 @@ const AppRoutes = ({
       <div className="flex-1 min-h-0">
         <Suspense fallback={<Loading />}>
           <Routes>
-            <Route
-              path="/"
-              element={
-                <ScrollArea
-                  className="h-full"
-                  viewportRef={homeViewportRef}
-                  viewportProps={{ onScroll: handleHomeScroll }}>
-                  <div className="flex flex-col min-h-screen">
-                    <main
-                      className="w-(--main-width) max-w-screen-2xl mx-auto h-full flex-grow"
-                      style={{
-                        paddingTop:
-                          selectedHeaderStyle === "levitation"
-                            ? headerHeight
-                            : 0,
-                        paddingBottom:
-                          selectedFooterStyle === "levitation"
-                            ? footerHeight
-                            : 0,
-                      }}>
-                      <HomePage
-                        searchTerm={searchTerm}
-                        setSearchTerm={setSearchTerm}
-                        filteredNodes={filteredNodes}
-                        selectedGroup={selectedGroup}
-                        setSelectedGroup={setSelectedGroup}
-                        stats={stats}
-                        groups={groups}
-                        handleSort={handleSort}
-                      />
-                    </main>
-                    {selectedFooterStyle === "followContent" && (
-                      <Footer isSettingsOpen={isSettingsOpen} ref={null} />
-                    )}
-                  </div>
-                </ScrollArea>
-              }
-            />
+            <Route path="/" element={null} />
             <Route
               path="/instance/:uuid"
               element={
+                <DetailOverlay>
                 <ScrollArea
                   className="h-full"
                   viewportRef={instanceViewportRef}>
@@ -182,6 +154,7 @@ const AppRoutes = ({
                     )}
                   </div>
                 </ScrollArea>
+                </DetailOverlay>
               }
             />
             <Route
@@ -199,6 +172,47 @@ const AppRoutes = ({
             />
           </Routes>
         </Suspense>
+        {(homeWasVisited || location.pathname === "/") && <div
+          className="detail-home-background h-full"
+          inert={location.pathname !== "/"}
+          style={{ display: location.pathname === "/" || location.pathname.startsWith("/instance/") ? undefined : "none" }}>
+          <Suspense fallback={<Loading />}>
+                <ScrollArea
+                  className="h-full"
+                  viewportRef={homeViewportRef}
+                  viewportProps={{ onScroll: handleHomeScroll }}>
+                  <div className="flex flex-col min-h-screen">
+                    <main
+                      className="w-(--main-width) max-w-screen-2xl mx-auto h-full flex-grow"
+                      style={{
+                        paddingTop:
+                          selectedHeaderStyle === "levitation"
+                            ? headerHeight
+                            : 0,
+                        paddingBottom:
+                          selectedFooterStyle === "levitation"
+                            ? footerHeight
+                            : 0,
+                      }}>
+                      <HomePage
+                        paused={location.pathname !== "/"}
+                        searchTerm={searchTerm}
+                        setSearchTerm={setSearchTerm}
+                        filteredNodes={filteredNodes}
+                        selectedGroup={selectedGroup}
+                        setSelectedGroup={setSelectedGroup}
+                        stats={stats}
+                        groups={groups}
+                        handleSort={handleSort}
+                      />
+                    </main>
+                    {selectedFooterStyle === "followContent" && (
+                      <Footer isSettingsOpen={isSettingsOpen} ref={null} />
+                    )}
+                  </div>
+                </ScrollArea>
+          </Suspense>
+        </div>}
       </div>
     </>
   );
@@ -256,6 +270,7 @@ export const AppContent = () => {
   }, []);
 
   useEffect(() => {
+    document.documentElement.style.setProperty('--active-settings-width',isSettingsOpen&&!isMobile?'var(--setting-width)':'0px');
     if (isSettingsOpen && !isMobile) {
       document.documentElement.style.setProperty(
         "--main-width",
@@ -317,10 +332,10 @@ export const AppContent = () => {
                 <Footer ref={footerRef} isSettingsOpen={isSettingsOpen} />
               )}
           </div>
-          <SettingsPanel
+          <Suspense fallback={null}>{isSettingsOpen && <SettingsPanel
             isOpen={isSettingsOpen}
             onClose={() => setIsSettingsOpen(false)}
-          />
+          />}</Suspense>
         </div>
       </DynamicContent>
     </Theme>
@@ -357,11 +372,13 @@ const App = () => {
   );
 };
 
-createRoot(document.getElementById("root")!).render(
+const root = import.meta.hot?.data.root ?? createRoot(document.getElementById("root")!);
+if (import.meta.hot) import.meta.hot.data.root = root;
+root.render(
   <StrictMode>
     <ConfigProvider>
       <Router
-        basename={import.meta.env.DEV ? "/themes/PurCarte/dist" : undefined}>
+        basename={import.meta.env.DEV ? import.meta.env.BASE_URL.replace(/\/$/, "") || undefined : undefined}>
         <App />
       </Router>
     </ConfigProvider>

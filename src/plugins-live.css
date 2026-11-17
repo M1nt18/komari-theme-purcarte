@@ -1,0 +1,8 @@
+[data-kp-hidden], [data-komari-plugin-root][hidden], [data-komari-plugin-root] [hidden] {
+  display: none !important;
+}
+.kp-tabs { flex-wrap: wrap; gap: 4px; }
+.kp-tabs > button { margin-inline: 0 !important; }
+@media (max-width: 760px) {
+  .kp-tabs > button { font-size: 14px !important; padding-inline: 8px; }
+}

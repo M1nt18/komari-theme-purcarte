@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense, useMemo } from "react";
+import { useState, useEffect, lazy, Suspense, useMemo, memo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useNodeData } from "@/contexts/NodeDataContext";
 import { useLiveData } from "@/contexts/LiveDataContext";
@@ -7,32 +7,32 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import Instance from "./Instance";
 const LoadCharts = lazy(() => import("./LoadCharts"));
-const PingChart = lazy(() => import("./PingChart"));
+const PingChart = lazy(() => import("./PingChart")
+  .then(module => ({ default: memo(module.default) })));
 import Loading from "@/components/loading";
 import Flag from "@/components/sections/Flag";
 import { useAppConfig } from "@/config";
 import { useIsMobile } from "@/hooks/useMobile";
 import { useLocale } from "@/config/hooks";
 import { Card } from "@/components/ui/card";
+const UnlockPanel = lazy(() => import("@/features/unlock/UnlockPanel")
+  .then(module => ({ default: memo(module.default) })));
+const TrafficForecastPanel = lazy(() => import("@/features/netforecast/TrafficForecastPanel")
+  .then(module => ({ default: memo(module.default) })));
 
 const InstancePage = () => {
   const { uuid } = useParams<{ uuid: string }>();
   const navigate = useNavigate();
   const { nodes: staticNodes, loading: nodesLoading } = useNodeData();
   const { liveData } = useLiveData();
-  useNodeData();
-  const [staticNode, setStaticNode] = useState<NodeData | null>(null);
-  const [isReady, setIsReady] = useState(false);
-  const [chartType, setChartType] = useState<"load" | "ping">("load");
-  const [displayedChartType, setDisplayedChartType] = useState<"load" | "ping">(
-    "load"
+  const staticNode = useMemo(() => staticNodes.find((node: NodeData) => node.uuid === uuid) ?? null,
+    [staticNodes, uuid]);
+  const [chartType, setChartType] = useState<"forecast" | "unlock" | "load" | "ping">(
+    () => window.location.hash === "#unlock" ? "unlock" : "forecast"
   );
-  const [chartAnimationState, setChartAnimationState] = useState<
-    "idle" | "fading-out" | "fading-in"
-  >("fading-in");
   const [loadHours, setLoadHours] = useState<number>(0);
   const [pingHours, setPingHours] = useState<number>(1); // 默认1小时
-  const { enableInstanceDetail, enablePingChart, publicSettings } =
+  const { enableInstanceDetail, enablePingChart, enableTrafficForecast, enableUnlockTest, publicSettings } =
     useAppConfig();
   const isMobile = useIsMobile();
   const { t } = useLocale();
@@ -94,15 +94,11 @@ const InstancePage = () => {
   }, [timeRanges, maxRecordPreserveTime, t]);
 
   useEffect(() => {
-    if (Array.isArray(staticNodes)) {
-      const foundNode = staticNodes.find((n: NodeData) => n.uuid === uuid);
-      setStaticNode(foundNode || null);
-    }
-  }, [staticNodes, uuid]);
+    const tab = window.location.hash === "#unlock" && enableUnlockTest ? "unlock" : enableTrafficForecast ? "forecast" : enableUnlockTest ? 'unlock' : 'load';
+    setChartType(tab);
+  }, [uuid,enableTrafficForecast,enableUnlockTest]);
 
-  useEffect(() => {
-    setIsReady(false);
-  }, [uuid]);
+  useEffect(()=>{if(chartType==='ping'&&!enablePingChart)setChartType('load');},[chartType,enablePingChart]);
 
   const stats = useMemo(() => {
     if (!staticNode || !liveData) return undefined;
@@ -113,43 +109,14 @@ const InstancePage = () => {
   const isOnline = stats?.online ?? false;
 
   useEffect(() => {
-    if (nodesLoading) {
-      setIsReady(false);
-      return;
-    }
+    if (!node || nodesLoading || window.location.hash !== "#unlock") return;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById("instance-chart-controls")?.scrollIntoView({ block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [node, nodesLoading, uuid]);
 
-    if (!node) {
-      return;
-    }
-
-    const timer = setTimeout(() => setIsReady(true), 300);
-
-    return () => clearTimeout(timer);
-  }, [node, nodesLoading]);
-
-  useEffect(() => {
-    if (chartType === displayedChartType) {
-      if (chartAnimationState === "fading-in") {
-        const timer = setTimeout(() => setChartAnimationState("idle"), 300);
-        return () => clearTimeout(timer);
-      }
-      return;
-    }
-
-    setChartAnimationState("fading-out");
-
-    const outTimer = setTimeout(() => {
-      setDisplayedChartType(chartType);
-      setChartAnimationState("fading-in");
-    }, 200);
-
-    return () => clearTimeout(outTimer);
-  }, [chartType, displayedChartType, chartAnimationState]);
-
-  const handleChartTypeChange = (nextType: "load" | "ping") => {
-    if (nextType === chartType || chartAnimationState === "fading-out") {
-      return;
-    }
+  const handleChartTypeChange = (nextType: "forecast" | "unlock" | "load" | "ping") => {
     setChartType(nextType);
   };
 
@@ -168,25 +135,15 @@ const InstancePage = () => {
     );
   }
 
-  if (!isReady) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loading
-          text={t("instancePage.enteringNodeDetails")}
-          className={!nodesLoading ? "fade-out" : ""}
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="text-card-foreground space-y-4 my-4 fade-in @container">
+    <div className="text-card-foreground space-y-4 my-4 @container">
       <Card className="flex items-center justify-between p-4 mb-4 text-primary">
         <div className="flex items-center gap-2 min-w-0">
           <Button
             className="flex-shrink-0"
             variant="outline"
             size="icon"
+            aria-label="收起机器详情"
             onClick={() => navigate(-1)}>
             <ArrowLeft />
           </Button>
@@ -202,10 +159,21 @@ const InstancePage = () => {
 
       {enableInstanceDetail && node && <Instance node={node} />}
 
-      <div className="flex flex-col items-center w-full space-y-4">
+      <div id="instance-chart-controls" className="flex flex-col items-center w-full space-y-4 scroll-mt-4">
         <Card className="p-2">
-          <div className="flex justify-center space-x-2">
+          <div className="kp-tabs flex justify-center space-x-2">
+            {enableTrafficForecast && <Button aria-pressed={chartType === 'forecast'} variant={chartType === "forecast" ? "default" : "ghost"} size="sm" onClick={() => handleChartTypeChange("forecast")}>
+              流量预测
+            </Button>}
+            {enableUnlockTest && <Button
+              aria-pressed={chartType === 'unlock'}
+              variant={chartType === "unlock" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => handleChartTypeChange("unlock")}>
+              流媒体检测
+            </Button>}
             <Button
+              aria-pressed={chartType === 'load'}
               variant={chartType === "load" ? "default" : "ghost"}
               size="sm"
               onClick={() => handleChartTypeChange("load")}>
@@ -213,6 +181,7 @@ const InstancePage = () => {
             </Button>
             {enablePingChart && (
               <Button
+                aria-pressed={chartType === 'ping'}
                 variant={chartType === "ping" ? "default" : "ghost"}
                 size="sm"
                 onClick={() => handleChartTypeChange("ping")}>
@@ -221,7 +190,7 @@ const InstancePage = () => {
             )}
           </div>
         </Card>
-        <Card className={`justify-center p-2 ${isMobile ? "w-full" : ""}`}>
+        {(chartType === "load" || chartType === "ping") && <Card className={`justify-center p-2 ${isMobile ? "w-full" : ""}`}>
           {chartType === "load" ? (
             <div className="flex space-x-2 overflow-x-auto whitespace-nowrap">
               {loadTimeRanges.map((range) => (
@@ -247,31 +216,26 @@ const InstancePage = () => {
               ))}
             </div>
           )}
-        </Card>
+        </Card>}
       </div>
 
-      <div
-        className={
-          chartAnimationState === "fading-out"
-            ? "fade-out"
-            : chartAnimationState === "fading-in"
-            ? "fade-in"
-            : undefined
-        }>
+      <div>
         <Suspense
           fallback={
             <div className="flex items-center justify-center h-96">
               <Loading text={t("chart.loading")} />
             </div>
           }>
-          {displayedChartType === "load" && staticNode ? (
+          {chartType === "forecast" && <TrafficForecastPanel key={node.uuid} uuid={node.uuid} />}
+          {chartType === "unlock" && <UnlockPanel key={node.uuid} uuid={node.uuid} />}
+          {chartType === "load" && staticNode ? (
             <LoadCharts
               node={staticNode}
               hours={loadHours}
               liveData={stats}
               isOnline={isOnline}
             />
-          ) : displayedChartType === "ping" && staticNode ? (
+          ) : chartType === "ping" && staticNode ? (
             <PingChart node={staticNode} hours={pingHours} />
           ) : null}
         </Suspense>

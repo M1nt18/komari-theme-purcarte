@@ -32,7 +32,7 @@ const Footer = forwardRef<
           selectedFooterStyle !== "followContent" ? "rounded-none" : "",
           "p-2 w-full flex items-center justify-center inset-shadow-sm inset-shadow-(color:--accent-a4)"
         )}>
-        <p className="flex justify-center text-sm text-secondary-foreground theme-text-shadow whitespace-pre">
+        <p className="text-center text-sm text-secondary-foreground theme-text-shadow whitespace-normal">
           {t("footer.poweredBy")}{" "}
           <a
             href="https://github.com/komari-monitor/komari"

@@ -1,0 +1,4 @@
+Detector source: https://github.com/HsukqiLee/MediaUnlockTest
+Release: v1.9.10-1788951725
+Binaries are unchanged upstream release assets with verified SHA256.
+No standalone license file was available from the upstream release/root. This notice does not grant additional rights.

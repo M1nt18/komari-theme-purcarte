@@ -63,6 +63,7 @@ const CustomTextsEditor = ({
                 </label>
                 <Input
                   type="text"
+                  aria-label={key}
                   value={editingTexts[key] ?? flatDefaultTexts[key]}
                   onChange={(e) => handleTextChange(key, e.target.value)}
                   className={cn(

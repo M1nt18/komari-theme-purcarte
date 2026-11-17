@@ -1,70 +1,20 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Dependency directories
 node_modules/
-package-lock.json
-
-# Build output
 dist/
-dist-ssr/
-*.local
-bundle-analysis.html
-
-# Environment variables
+dist-*/
+release/
+*.zip
+*.log
+*.tsbuildinfo
+__pycache__/
+*.pyc
+*.db
+*.sqlite*
+*.pem
+*.key
 .env
-.env.local
-.env.development
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Vite specific
+.env.*
+!.env.example
 .vite/
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
-
-# IDEs and editors
+.DS_Store
 .idea/
 .vscode/
-!.vscode/extensions.json
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Testing
-coverage/
-*.lcov
-
-# Yarn
-.yarn/*
-!.yarn/patches
-!.yarn/releases
-!.yarn/plugins
-!.yarn/sdks
-!.yarn/versions
-.pnp.*
-
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-vite.config.dev.ts

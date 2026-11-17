@@ -9,7 +9,7 @@ import type {
   NodeStats,
 } from "@/types/node";
 import type { RpcNodeStatus, RpcNodeStatusMap } from "@/types/rpc";
-import { convertNodeStatsToRpcNodeStatus } from "@/utils/converters";
+import { convertNodeStatsToRpcNodeStatus } from "../utils/converters.ts";
 import type { SiteStatus } from "@/config/default";
 
 class ApiService {
@@ -285,8 +285,8 @@ class ApiService {
     settings: Partial<any>
   ): Promise<ApiResponse<any>> {
     try {
-      const response = await fetch(
-        `${this.baseUrl}/api/admin/theme/settings?theme=${theme}`,
+      const response = await this.fetchWithTimeout(
+        `${this.baseUrl}/api/admin/theme/settings?theme=${encodeURIComponent(theme)}`,
         {
           method: "POST",
           headers: {
@@ -323,13 +323,23 @@ export class WebSocketService {
   private url: string;
   private statusInterval: ReturnType<typeof setInterval> | null = null;
   private rpcCallId = 1;
-  public useRpc = false;
+  private stopped = true;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private rpcMode = false;
+  get useRpc() { return this.rpcMode; }
+  set useRpc(value: boolean) {
+    if (value === this.rpcMode) return;
+    this.rpcMode = value;
+    if (!this.stopped) { this.disconnect(); this.connect(); }
+  }
 
   constructor(url: string = "") {
     this.url = url;
   }
 
   connect() {
+    this.stopped = false;
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     if (this.ws && this.ws.readyState < 2) {
       return;
     }
@@ -342,9 +352,11 @@ export class WebSocketService {
       }${endpoint}`;
 
     try {
-      this.ws = new WebSocket(wsUrl);
+      const socket = new WebSocket(wsUrl);
+      this.ws = socket;
 
       this.ws.onopen = () => {
+        if (this.ws !== socket || this.stopped) return;
         console.log(`WebSocket connected to ${endpoint}`);
         this.reconnectAttempts = 0;
         this.sendUpdateRequest();
@@ -352,6 +364,7 @@ export class WebSocketService {
       };
 
       this.ws.onmessage = (event) => {
+        if (this.ws !== socket || this.stopped) return;
         try {
           const data = JSON.parse(event.data);
           if (this.useRpc) {
@@ -384,12 +397,15 @@ export class WebSocketService {
       };
 
       this.ws.onclose = () => {
+        if (this.ws !== socket || this.stopped) return;
+        this.ws = null;
         console.log("WebSocket disconnected");
         this.stopStatusUpdates();
         this.reconnect();
       };
 
       this.ws.onerror = (error) => {
+        if (this.ws !== socket || this.stopped) return;
         console.error("WebSocket error:", error);
       };
     } catch (error) {
@@ -399,12 +415,13 @@ export class WebSocketService {
   }
 
   private reconnect() {
+    if (this.stopped || this.reconnectTimer) return;
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
       console.log(
         `Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`
       );
-      setTimeout(() => this.connect(), this.reconnectInterval);
+      this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.connect(); }, this.reconnectInterval);
     } else {
       console.error("Max reconnection attempts reached");
     }
@@ -435,11 +452,12 @@ export class WebSocketService {
   }
 
   disconnect() {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-      this.stopStatusUpdates();
-    }
+    this.stopped = true;
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    const socket = this.ws;
+    this.ws = null;
+    this.stopStatusUpdates();
+    socket?.close();
   }
 
   private startStatusUpdates() {

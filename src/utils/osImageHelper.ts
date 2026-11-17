@@ -13,152 +13,152 @@ interface OSConfig {
 const osConfigs: OSConfig[] = [
   {
     name: "Alibaba",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-alibaba.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-alibaba.svg`,
     keywords: ["alibaba"],
   },
   {
     name: "AlmaLinux",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-alma.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-alma.svg`,
     keywords: ["alma", "almalinux"],
   },
   {
     name: "Alpine Linux",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-alpine.webp",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-alpine.webp`,
     keywords: ["alpine", "alpine linux"],
   },
   {
     name: "Arch Linux",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-arch.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-arch.svg`,
     keywords: ["arch", "archlinux", "arch linux"],
   },
   {
     name: "Armbian",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-armbian.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-armbian.svg`,
     keywords: ["armbian"],
   },
   {
     name: "Astra Linux",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-astra.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-astra.svg`,
     keywords: ["astra", "astra linux"],
   },
   {
     name: "CentOS",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-centos.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-centos.svg`,
     keywords: ["centos", "cent os"],
   },
   {
     name: "Debian",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-debian.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-debian.svg`,
     keywords: ["debian", "deb"],
   },
   {
     name: "Fedora",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-fedora.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-fedora.svg`,
     keywords: ["fedora"],
   },
   {
     name: "FreeBSD",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-freebsd.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-freebsd.svg`,
     keywords: ["freebsd", "bsd"],
   },
   {
     name: "Gentoo",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-gentoo.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-gentoo.svg`,
     keywords: ["gentoo"],
   },
   {
     name: "Huawei",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-huawei.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-huawei.svg`,
     keywords: ["huawei", "euleros", "euler os"],
   },
   {
     name: "ImmortalWrt",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-openwrt.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-openwrt.svg`,
     keywords: ["immortalwrt", "immortal", "emmortal"],
   },
   {
     name: "Orange Pi",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-orange-pi.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-orange-pi.svg`,
     keywords: ["orange pi", "orangepi"],
   },
   {
     name: "iStoreOS",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-istore.png",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-istore.png`,
     keywords: ["istore", "istoreos", "istore os"],
   },
   {
     name: "Kali Linux",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-kail.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-kail.svg`,
     keywords: ["kail", "kali", "kali linux"],
   },
   {
     name: "macOS",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-macos.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-macos.svg`,
     keywords: ["macos"],
   },
   {
     name: "Manjaro",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-manjaro.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-manjaro.svg`,
     keywords: ["manjaro"],
   },
   {
     name: "Linux Mint",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-mint.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-mint.svg`,
     keywords: ["mint", "linux mint"],
   },
   {
     name: "NixOS",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-nix.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-nix.svg`,
     keywords: ["nixos", "nix os", "nix"],
   },
   {
     name: "OpenCloudOS",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-opencloud.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-opencloud.svg`,
     keywords: ["opencloud"],
   },
   {
     name: "openSUSE",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-openSUSE.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-openSUSE.svg`,
     keywords: ["opensuse", "suse"],
   },
   {
     name: "OpenWrt",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-openwrt.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-openwrt.svg`,
     keywords: ["openwrt", "open wrt", "open-wrt", "qwrt"],
   },
   {
     name: "Proxmox VE",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-proxmox.ico",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-proxmox.ico`,
     keywords: ["proxmox", "proxmox ve"],
   },
   {
     name: "Red Hat",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-redhat.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-redhat.svg`,
     keywords: ["redhat", "rhel", "red hat"],
   },
   {
     name: "Rocky Linux",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-rocky.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-rocky.svg`,
     keywords: ["rocky", "rocky linux"],
   },
   {
     name: "Synology DSM",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-synology.ico",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-synology.ico`,
     keywords: ["synology", "dsm", "synology dsm"],
   },
   {
     name: "Ubuntu",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-ubuntu.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-ubuntu.svg`,
     keywords: ["ubuntu", "elementary"],
   },
   {
     name: "Unraid",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-unraid.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-unraid.svg`,
     keywords: ["unraid"],
   },
   {
     name: "Windows",
-    image: "/themes/PurCarte/dist/purcarte-assets/logo/os-windows.svg",
+    image: `${import.meta.env.BASE_URL}purcarte-assets/logo/os-windows.svg`,
     keywords: ["windows", "win", "microsoft", "ms"],
   },
 ];
@@ -166,7 +166,7 @@ const osConfigs: OSConfig[] = [
 // 默认配置
 const defaultOSConfig: OSConfig = {
   name: "Unknown",
-  image: "/themes/PurCarte/dist/purcarte-assets/logo/linux.svg",
+  image: `${import.meta.env.BASE_URL}purcarte-assets/logo/linux.svg`,
   keywords: ["unknown"],
 };
 

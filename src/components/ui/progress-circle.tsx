@@ -19,7 +19,8 @@ export const CircleProgress: React.FC<CircleProgressProps> = ({
   showPercentage = true,
   color = "",
 }) => {
-  const percentage = Math.min(100, Math.max(0, (value / maxValue) * 100));
+  const ready = Number.isFinite(value) && maxValue > 0;
+  const percentage = ready ? Math.min(100, Math.max(0, (value / maxValue) * 100)) : 0;
   const radius = size / 2 - strokeWidth / 2;
   const circumference = radius * 2 * Math.PI;
   const strokeDashoffset = circumference - (percentage / 100) * circumference;
@@ -58,7 +59,7 @@ export const CircleProgress: React.FC<CircleProgressProps> = ({
       </svg>
       {showPercentage && (
         <div className="absolute inset-0 flex items-center justify-center text-xs font-medium">
-          {percentage.toFixed(0)}%
+          {ready ? `${percentage.toFixed(0)}%` : '—'}
         </div>
       )}
     </div>

@@ -25,6 +25,7 @@ export const StatsToggleMenu = memo(
           <Button
             variant="ghost"
             size="icon"
+            aria-label={t('statsBar.displayOptionsTitle')}
             className="h-6 w-6 shrink-0 rounded-full cursor-pointer">
             <Settings2 className="h-3 w-3" />
           </Button>
@@ -51,6 +52,7 @@ export const StatsToggleMenu = memo(
                   }
                 </span>
                 <Switch
+                  aria-label={key}
                   checked={displayOptions[key]}
                   onCheckedChange={(checked) =>
                     setDisplayOptions({ [key]: checked })
