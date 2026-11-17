@@ -8,6 +8,7 @@
     "review": "vite --mode review --port 4183 --strictPort",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
+    "check:lock": "node tools/check-lock.mjs",
     "lint": "eslint src tools vite.config.ts",
     "test": "node tools/run-tests.mjs",
     "package": "python tools/package_release.py",
