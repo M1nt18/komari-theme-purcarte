@@ -12,7 +12,8 @@ import {
   Menu,
 } from "lucide-react";
 import { forwardRef, useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
+import ForecastOverviewLauncher from "@/features/netforecast/ForecastOverviewLauncher";
 import { useAppConfig } from "@/config";
 import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -123,7 +124,7 @@ const ViewModeSwitcher = ({ isMobile }: { isMobile?: boolean }) => {
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon">
+        <Button variant="ghost" size="icon" aria-label="切换卡片视图" title="切换视图">
           <Icon className="size-5 text-primary" />
         </Button>
       </DropdownMenuTrigger>
@@ -158,7 +159,7 @@ const ThemeSwitcher = ({ isMobile }: { isMobile?: boolean }) => {
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon">
+        <Button variant="ghost" size="icon" aria-label="切换外观" title="切换外观">
           <Icon className="size-5 text-primary" />
         </Button>
       </DropdownMenuTrigger>
@@ -193,11 +194,11 @@ const AdminButton = ({ isMobile }: { isMobile?: boolean }) => {
   }
 
   return (
-    <a href="/admin" target="_blank" rel="noopener noreferrer">
-      <Button variant="ghost" size="icon">
+      <Button asChild variant="ghost" size="icon" aria-label="打开管理后台" title="管理后台">
+      <a href="/admin" target="_blank" rel="noopener noreferrer">
         <CircleUserIcon className="size-5 text-primary" />
+      </a>
       </Button>
-    </a>
   );
 };
 
@@ -222,7 +223,7 @@ const SearchBar = ({
     return (
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="relative group">
+          <Button variant="ghost" size="icon" className="relative group" aria-label="搜索机器">
             <Search className="size-5 text-primary" />
             {searchTerm && (
               <span className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-(--accent-indicator) transform -translate-x-1/2"></span>
@@ -235,6 +236,7 @@ const SearchBar = ({
           <div className="p-2">
             <Input
               type="search"
+              aria-label={t('search.placeholder')}
               placeholder={t("search.placeholder")}
               className="w-full"
               value={searchTerm}
@@ -256,6 +258,7 @@ const SearchBar = ({
         }`}>
         <Input
           type="search"
+          aria-label={t('search.placeholder')}
           placeholder={t("search.placeholder")}
           className={`transition-all duration-300 ease-in-out ${
             !isSearchOpen && "invisible"
@@ -270,6 +273,8 @@ const SearchBar = ({
         variant="ghost"
         size="icon"
         className="relative group"
+        aria-label="搜索机器"
+        aria-expanded={isSearchOpen}
         onClick={() => setIsSearchOpen(!isSearchOpen)}>
         <Search className="size-5 text-primary" />
         {searchTerm && (
@@ -289,6 +294,7 @@ export const Header = forwardRef<HTMLElement, HeaderProps>((props, ref) => {
     isSettingsOpen,
   } = props;
   const location = useLocation();
+  const navigate = useNavigate();
   const isInstancePage = location.pathname.startsWith("/instance");
   const {
     selectedHeaderStyle,
@@ -299,6 +305,7 @@ export const Header = forwardRef<HTMLElement, HeaderProps>((props, ref) => {
     isShowStatsInHeader,
     siteStatus,
     isShowConfigEditButtonInLogined,
+    enableTrafficForecast,
   } = useAppConfig();
   const isMobile = useIsMobile();
 
@@ -320,13 +327,13 @@ export const Header = forwardRef<HTMLElement, HeaderProps>((props, ref) => {
       }}>
       <Card className="rounded-none w-full flex items-center justify-center">
         <div className="w-(--main-width) max-w-screen-2xl py-2 flex items-center justify-between">
-          <div className="flex items-center theme-text-shadow text-accent-foreground">
-            <a href="/" className="flex items-center gap-2 text-2xl font-bold">
+          <div className="flex min-w-0 items-center theme-text-shadow text-accent-foreground">
+            <Link to="/" className="flex min-w-0 items-center gap-2 text-2xl font-bold">
               {enableLogo && logoUrl && (
                 <img src={logoUrl} alt="logo" className="h-8" />
               )}
-              {enableTitle && <span>{titleText}</span>}
-            </a>
+              {enableTitle && <span className="truncate" title={titleText}>{titleText}</span>}
+            </Link>
           </div>
 
           {!isInstancePage &&
@@ -338,7 +345,8 @@ export const Header = forwardRef<HTMLElement, HeaderProps>((props, ref) => {
               </div>
             )}
 
-          <div className="flex items-center space-x-2">
+          <div className="flex shrink-0 items-center space-x-2">
+            {enableTrafficForecast && !isPrivate && !isInstancePage && <ForecastOverviewLauncher onOpenNode={uuid => navigate(`/instance/${uuid}#forecast`)} />}
             {isMobile ? (
               <>
                 {!isInstancePage && (
@@ -353,6 +361,7 @@ export const Header = forwardRef<HTMLElement, HeaderProps>((props, ref) => {
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label="打开显示与外观菜单"
                       className="relative group">
                       <Menu className="size-5 text-primary transition-transform duration-300 group-data-[state=open]:rotate-180" />
                       <span className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-(--accent-indicator) transform -translate-x-1/2 scale-0 transition-transform duration-300 group-data-[state=open]:scale-100"></span>

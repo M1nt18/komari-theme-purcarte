@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTrafficQuota } from "@/features/traffic-budget/useTrafficQuota";
 import { formatPrice } from "@/utils";
 import type { NodeData } from "@/types/node";
 import type { RpcNodeStatus } from "@/types/rpc";
@@ -145,6 +146,7 @@ export const useNodeListCommons = (searchTerm: string) => {
 export const useNodeCommons = (node: NodeData & { stats?: any }) => {
   const { stats } = node;
   const { t } = useLocale();
+  const quota = useTrafficQuota(node.uuid);
   const isOnline = stats ? stats.online : false;
   const price = formatPrice(node.price, node.currency, node.billing_cycle);
 
@@ -178,18 +180,30 @@ export const useNodeCommons = (node: NodeData & { stats?: any }) => {
       : null;
 
   let daysLeftTag = null;
+  let daysLeftText: string | null = null;
+  let daysLeftColor: "red" | "orange" | "green" = "green";
   if (daysLeft !== null) {
-    const daysLeftText = t("node.daysLeft", { daysLeft: daysLeft });
+    const localizedDaysLeftText = t("node.daysLeft", { daysLeft: daysLeft });
     if (daysLeft < 0) {
       daysLeftTag = `${t("node.expired")}<red>`;
+      daysLeftText = t("node.expired");
+      daysLeftColor = "red";
     } else if (daysLeft <= 7) {
-      daysLeftTag = `${daysLeftText}<red>`;
+      daysLeftTag = `${localizedDaysLeftText}<red>`;
+      daysLeftText = localizedDaysLeftText;
+      daysLeftColor = "red";
     } else if (daysLeft <= 15) {
-      daysLeftTag = `${daysLeftText}<orange>`;
+      daysLeftTag = `${localizedDaysLeftText}<orange>`;
+      daysLeftText = localizedDaysLeftText;
+      daysLeftColor = "orange";
     } else if (daysLeft < 36500) {
-      daysLeftTag = `${daysLeftText}<green>`;
+      daysLeftTag = `${localizedDaysLeftText}<green>`;
+      daysLeftText = localizedDaysLeftText;
+      daysLeftColor = "green";
     } else {
       daysLeftTag = `${t("node.longTerm")}<green>`;
+      daysLeftText = t("node.longTerm");
+      daysLeftColor = "green";
     }
   }
 
@@ -215,37 +229,17 @@ export const useNodeCommons = (node: NodeData & { stats?: any }) => {
       : []),
   ];
 
-  const trafficUsed = useMemo(() => {
-    if (!stats || !isOnline) return 0;
-
-    if (!node.traffic_limit) {
-      return stats.net_total_up + stats.net_total_down;
-    }
-
-    switch (node.traffic_limit_type) {
-      case "up":
-        return stats.net_total_up;
-      case "down":
-        return stats.net_total_down;
-      case "sum":
-        return stats.net_total_up + stats.net_total_down;
-      case "min":
-        return Math.min(stats.net_total_up, stats.net_total_down);
-      default: // max 或者未设置
-        return Math.max(stats.net_total_up, stats.net_total_down);
-    }
-  }, [node.traffic_limit, node.traffic_limit_type, stats, isOnline]);
-
-  const trafficPercentage = useMemo(() => {
-    if (!node.traffic_limit || !stats || !isOnline) return 0;
-
-    return (trafficUsed / node.traffic_limit) * 100;
-  }, [node.traffic_limit, stats, isOnline, trafficUsed]);
+  const configuredTrafficLimit = quota?.limit_bytes ?? node.traffic_limit ?? 0;
+  const trafficUsed = quota?.used_bytes ?? NaN;
+  const trafficPercentage = quota?.usage_percent ?? NaN;
 
   return {
     stats,
     isOnline,
     tagList,
+    daysLeftTag,
+    daysLeftText,
+    daysLeftColor,
     cpuUsage,
     memUsage,
     swapUsage,
@@ -254,5 +248,8 @@ export const useNodeCommons = (node: NodeData & { stats?: any }) => {
     expired_at,
     trafficUsed,
     trafficPercentage,
+    trafficQuota: quota,
+    trafficLimitType: quota?.billing_mode ?? node.traffic_limit_type,
+    trafficLimit: configuredTrafficLimit,
   };
 };

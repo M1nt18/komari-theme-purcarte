@@ -1,0 +1,10 @@
+[Unit]
+Description=Consistent Komari core and custom ledger backups
+After=komari-traffic-ledger.service
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/komari-custom.env
+ExecStart=/usr/bin/python3 -B /opt/komari-maintenance/backup.py
+UMask=0077
+Nice=10
+IOSchedulingClass=idle

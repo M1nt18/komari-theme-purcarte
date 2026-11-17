@@ -7,7 +7,7 @@ interface EditButtonProps {
 
 const EditButton = ({ onClick }: EditButtonProps) => {
   return (
-    <Button onClick={onClick} variant="ghost" size="icon">
+    <Button onClick={onClick} variant="ghost" size="icon" aria-label="打开主题设置" title="主题设置">
       <SlidersHorizontal className="h-5 w-5" />
     </Button>
   );

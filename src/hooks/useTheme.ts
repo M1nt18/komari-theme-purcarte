@@ -1,7 +1,7 @@
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect, useMemo, useCallback, createContext, useContext } from "react";
 import { useIsMobile } from "@/hooks/useMobile";
 import { useAppConfig } from "@/config";
-import { DEFAULT_CONFIG, allAppearance } from "@/config/default";
+import { DEFAULT_CONFIG, allAppearance, allColors } from "@/config/default";
 import type { AppearanceType, ColorType, ViewModeType } from "@/config/default";
 
 type themeAppearanceType = "light" | "dark";
@@ -104,37 +104,36 @@ const useStoredState = <T>(
   defaultValue: T,
   validator?: (value: any) => value is T
 ): [T, React.Dispatch<React.SetStateAction<T>>] => {
-  const { enableLocalStorage } = useAppConfig();
-
-  const [state, setState] = useState<T>(() => {
+  const { enableLocalStorage, previewConfig } = useAppConfig();
+  const read = () => {
     if (enableLocalStorage) {
       try {
-        const storedValue = localStorage.getItem(key);
-        if (storedValue) {
-          const parsedValue = JSON.parse(storedValue);
-          if (!validator || validator(parsedValue)) {
-            return parsedValue as T;
-          }
+        const raw = localStorage.getItem(key);
+        if (raw !== null) {
+          const value = JSON.parse(raw);
+          if (!validator || validator(value)) return { key, value: value as T };
         }
-      } catch (error) {
-        console.error("Error parsing stored state:", error);
-        // Fallback to default value if parsing fails
-      }
+      } catch { /* unavailable storage falls back to the configured value */ }
     }
-    return defaultValue;
-  });
-
+    return null;
+  };
+  const [entry, setEntry] = useState(read);
+  const previewing = Boolean(previewConfig && Object.keys(previewConfig).length);
   useEffect(() => {
-    if (enableLocalStorage) {
-      try {
-        localStorage.setItem(key, JSON.stringify(state));
-      } catch (error) {
-        console.error("Error setting stored state:", error);
-      }
+    setEntry(read());
+    // Defaults are returned directly; changing a site default never creates a browser preference.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, enableLocalStorage]);
+  useEffect(() => {
+    if (enableLocalStorage && entry?.key === key && !previewing) {
+      try { localStorage.setItem(key, JSON.stringify(entry.value)); } catch { /* optional browser preference */ }
     }
-  }, [key, state, enableLocalStorage]);
-
-  return [state, setState];
+  }, [key, entry, enableLocalStorage, previewing]);
+  const setValue = useCallback<React.Dispatch<React.SetStateAction<T>>>(next => {
+    setEntry(previous => ({ key, value: typeof next === 'function'
+      ? (next as (value:T)=>T)(previous?.key === key ? previous.value : defaultValue) : next }));
+  }, [key, defaultValue]);
+  return [previewing || !enableLocalStorage || entry?.key !== key ? defaultValue : entry.value, setValue];
 };
 
 export const useThemeManager = () => {
@@ -155,33 +154,27 @@ export const useThemeManager = () => {
 
   const [color, setColor] = useStoredState<ColorType>(
     "color",
-    selectThemeColor
+    selectThemeColor,
+    (value): value is ColorType => allColors.includes(value)
   );
 
   const [viewMode, setViewMode] = useStoredState<ViewModeType>(
-    "nodeViewMode",
-    selectedDefaultView
+    isMobile ? "nodeViewMode:mobile" : "nodeViewMode",
+    isMobile ? selectMobileDefaultView : selectedDefaultView,
+    (value): value is ViewModeType => ['grid','compact','table'].includes(value)
   );
 
-  useEffect(() => {
-    if (selectMobileDefaultView && isMobile) {
-      setViewMode(selectMobileDefaultView);
-    }
-    if (!isMobile) {
-      setViewMode(selectedDefaultView);
-    }
-  }, [isMobile, selectMobileDefaultView, selectedDefaultView, setViewMode]);
 
   const [statusCardsVisibility, setStatusCardsVisibility] = useStoredState(
     "statusCardsVisibility",
-    (() => {
+    useMemo(() => {
       const visibility: { [key: string]: boolean } = {};
       defaultstatusCardsVisibility.split(",").forEach((item) => {
         const [key, value] = item.split(":");
         visibility[key] = value === "true";
       });
       return visibility as ThemeContextType["statusCardsVisibility"];
-    })()
+    }, [defaultstatusCardsVisibility])
   );
 
   const handleSetStatusCardsVisibility = (
@@ -190,9 +183,7 @@ export const useThemeManager = () => {
     setStatusCardsVisibility((prev) => ({ ...prev, ...newVisibility }));
   };
 
-  useEffect(() => {
-    setColor(selectThemeColor);
-  }, [selectThemeColor, setColor]);
+
 
   const resolvedAppearance = useSystemTheme(appearance);
 

@@ -13,7 +13,7 @@ export const parseCustomTexts = (
     return {};
   }
 
-  const result: Record<string, string> = {};
+  const result: Record<string, string> = Object.create(null);
   const pairs = customTexts.split(",");
 
   for (const pair of pairs) {
@@ -95,6 +95,8 @@ export const mergeTexts = (defaultTexts: any, customTexts: string): any => {
   for (const key in parsedCustomTexts) {
     if (
       Object.prototype.hasOwnProperty.call(parsedCustomTexts, key) &&
+      Object.prototype.hasOwnProperty.call(flatDefault, key) &&
+      !key.split('.').some(part => ['__proto__', 'constructor', 'prototype'].includes(part)) &&
       flatDefault[key] !== parsedCustomTexts[key]
     ) {
       const keys = key.split(".");
@@ -157,6 +159,7 @@ export const deepMerge = <T extends object, S extends object>(
 
   if (isObject(target) && isObject(source)) {
     Object.keys(source).forEach((key) => {
+      if (['__proto__', 'constructor', 'prototype'].includes(key)) return;
       const sourceKey = key as keyof S;
       if (isObject(source[sourceKey])) {
         if (!(key in target)) {

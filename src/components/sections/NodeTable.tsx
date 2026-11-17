@@ -99,6 +99,8 @@ const NodeTableRow = ({
     load,
     expired_at,
     trafficPercentage,
+    trafficLimit,
+    trafficLimitType,
   } = useNodeCommons(node);
   const gridCols = enableSwap ? "grid-cols-9" : "grid-cols-8";
   const { pingChartTimeInPreview, enableInstanceDetail, enablePingChart } =
@@ -258,20 +260,20 @@ const NodeTableRow = ({
                     : t("node.notAvailable")}
                 </div>
               </div>
-              {node.traffic_limit !== 0 && isOnline && stats && (
+              {trafficLimit !== 0 && isOnline && stats && (
                 <>
                   <div className="w-[80%] flex items-center gap-1">
                     <ProgressBar value={trafficPercentage} h="h-2" />
                     <span className="text-right text-xs">
-                      {node.traffic_limit !== 0
-                        ? `${trafficPercentage.toFixed(0)}%`
+                      {trafficLimit !== 0
+                        ? Number.isFinite(trafficPercentage) ? `${trafficPercentage.toFixed(0)}%` : '待同步'
                         : ""}
                     </span>
                   </div>
                   <div className="text-xs text-secondary-foreground">
                     {formatTrafficLimit(
-                      node.traffic_limit,
-                      node.traffic_limit_type
+                      trafficLimit,
+                      trafficLimitType
                     )}
                   </div>
                 </>
@@ -294,16 +296,16 @@ const NodeTableRow = ({
                       : t("node.notAvailable")}
                   </div>
                 </div>
-                {node.traffic_limit !== 0 && isOnline && stats && (
+                {trafficLimit !== 0 && isOnline && stats && (
                   <div>
                     {formatTrafficLimit(
-                      node.traffic_limit,
-                      node.traffic_limit_type
+                      trafficLimit,
+                      trafficLimitType
                     )}
                   </div>
                 )}
               </div>
-              {node.traffic_limit !== 0 && isOnline && stats && (
+              {trafficLimit !== 0 && isOnline && stats && (
                 <div>
                   <CircleProgress
                     value={trafficPercentage}
@@ -341,7 +343,7 @@ const NodeTableRow = ({
           )}>
           {enableInstanceDetail && (
             <div className="col-span-1 @container">
-              <Instance node={node} />
+              {shouldRenderChart && <Instance node={node} />}
             </div>
           )}
           {enablePingChart && (

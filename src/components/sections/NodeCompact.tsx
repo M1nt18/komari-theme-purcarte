@@ -74,7 +74,7 @@ export const NodeCompact = ({ node, onShowDetails }: NodeCompactProps) => {
             <CardTitle className="text-sm font-bold">{node.name}</CardTitle>
           </div>
         </Link>
-        <button onClick={onShowDetails}>
+        <button onClick={onShowDetails} aria-label="查看节点简要信息">
           <Info className="size-4" />
         </button>
       </CardHeader>

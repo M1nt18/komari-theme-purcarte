@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNodeData } from "@/contexts/NodeDataContext";
 import type { PingHistoryResponse, NodeData } from "@/types/node";
+import { createHistoryCache } from "@/utils/historyCache";
 
-const cache = new Map<string, PingHistoryResponse>();
+const historyCache = createHistoryCache<PingHistoryResponse | null>();
 
-export const usePingChart = (node: NodeData | null, hours: number) => {
+export const usePingChart = (node: NodeData | null, hours: number, enabled = true) => {
   const { getPingHistory } = useNodeData();
   const [pingHistory, setPingHistory] = useState<PingHistoryResponse | null>(
     null
@@ -13,7 +14,7 @@ export const usePingChart = (node: NodeData | null, hours: number) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!node?.uuid) {
+    if (!enabled || !node?.uuid) {
       setPingHistory(null);
       setLoading(false);
       return;
@@ -21,31 +22,33 @@ export const usePingChart = (node: NodeData | null, hours: number) => {
 
     const cacheKey = `${node.uuid}-${hours}`;
 
-    if (cache.has(cacheKey)) {
-      setPingHistory(cache.get(cacheKey)!);
+    const cached = historyCache.peek(cacheKey);
+    if (cached !== undefined) {
+      setPingHistory(cached);
       setLoading(false);
+      setError(null);
       return;
     }
 
+    let active = true;
+    setPingHistory(null);
     setLoading(true);
     setError(null);
 
     const fetchHistory = async () => {
       try {
-        const data = await getPingHistory(node.uuid, hours);
-        if (data) {
-          cache.set(cacheKey, data);
-        }
-        setPingHistory(data);
+        const data = await historyCache.load(cacheKey, () => getPingHistory(node.uuid, hours));
+        if (active) setPingHistory(data);
       } catch (err: any) {
-        setError(err.message || "Failed to fetch history data");
+        if (active) setError(err.message || "Failed to fetch history data");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
     fetchHistory();
-  }, [node?.uuid, hours, getPingHistory]);
+    return () => { active = false; };
+  }, [node?.uuid, hours, getPingHistory, enabled]);
 
   return {
     loading,

@@ -9,7 +9,7 @@ export const ProgressBar = ({
   h?: string;
   className?: string;
 }) => {
-  const clampedValue = Math.max(0, Math.min(100, value));
+  const clampedValue = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
   const progressRoundedClass =
     clampedValue < 10 ? "rounded-sm" : "rounded-full";
 

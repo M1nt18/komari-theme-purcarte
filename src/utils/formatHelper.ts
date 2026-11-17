@@ -7,6 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 // Helper function to format bytes
 export const formatBytes = (bytes: number, isSpeed = false, decimals = 2) => {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
   if (bytes === 0) return isSpeed ? "0 B/s" : "0 B";
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
@@ -14,7 +15,7 @@ export const formatBytes = (bytes: number, isSpeed = false, decimals = 2) => {
     ? ["B/s", "KB/s", "MB/s", "GB/s", "TB/s"]
     : ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
 
-  let i = Math.floor(Math.log(bytes) / Math.log(k));
+  let i = Math.max(0, Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k))));
   let value = bytes / Math.pow(k, i);
 
   // 如果值大于等于1000，则进位到下一个单位

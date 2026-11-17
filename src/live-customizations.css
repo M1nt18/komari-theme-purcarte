@@ -1,0 +1,19 @@
+
+.theme-card-style.text-card-foreground{font-size:16px}
+.theme-card-style.text-card-foreground .text-xs{font-size:14px;line-height:1.3rem}
+.theme-card-style.text-card-foreground .text-sm{font-size:16px;line-height:1.4rem}
+.theme-card-style.text-card-foreground .text-base{font-size:18px;line-height:1.5rem}
+
+
+.theme-card-style.text-card-foreground [class~="-mt-4"]{margin-top:-1rem}
+
+
+.theme-card-style.text-card-foreground [class~="-mt-6"]{margin-top:-1.5rem}
+.theme-card-style.text-card-foreground .preview-ping-chart-up{transform:translateY(-8px)}
+.theme-card-style.text-card-foreground [class~="pb-0"]{padding-bottom:0}
+
+
+.theme-card-style.text-card-foreground [class~="-mt-8"]{margin-top:-2rem}
+
+/* Skip raster/layout work for cards outside the scroll viewport. */
+.node-grid-card { content-visibility: auto; contain-intrinsic-size: auto 30rem; }

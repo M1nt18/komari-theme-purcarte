@@ -1,0 +1,30 @@
+# Place these locations inside the existing HTTPS server block.
+# Keep your current / proxy, certificate, WebSocket and real-IP configuration.
+location = /api/purcarte/traffic {
+    proxy_pass http://127.0.0.1:25776;
+    proxy_set_header Host $host;
+    proxy_set_header Cookie $http_cookie;
+    proxy_set_header Authorization $http_authorization;
+    add_header Cache-Control "no-store" always;
+}
+location = /api/plugin/net-forecast/overview {
+    proxy_pass http://127.0.0.1:25776;
+    proxy_set_header Cookie $http_cookie;
+    proxy_set_header Authorization $http_authorization;
+    add_header Cache-Control "no-store" always;
+}
+location ^~ /api/plugin/unlock-test/ {
+    proxy_pass http://127.0.0.1:25776;
+    proxy_set_header Host $host;
+    proxy_set_header Cookie $http_cookie;
+    proxy_set_header Authorization $http_authorization;
+    client_max_body_size 300k;
+    proxy_read_timeout 20s;
+    add_header Cache-Control "no-store" always;
+}
+location ^~ /unlock/ {
+    alias /opt/komari-unlock-release/;
+    autoindex off;
+    limit_except GET { deny all; }
+    add_header Cache-Control "no-store" always;
+}

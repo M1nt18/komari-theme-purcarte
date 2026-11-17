@@ -1,0 +1,32 @@
+{
+  "release": "v1.9.10-1788951725",
+  "binaries": {
+    "386": {
+      "url": "https://github.com/HsukqiLee/MediaUnlockTest/releases/download/v1.9.10-1788951725/unlock-test_linux_386",
+      "sha256": "416ca063810f7d106362b70a329aa077ecd65173803d9acaaca3cb0b83cff8f1",
+      "path": "bin/unlock-test_linux_386"
+    },
+    "amd64": {
+      "url": "https://github.com/HsukqiLee/MediaUnlockTest/releases/download/v1.9.10-1788951725/unlock-test_linux_amd64",
+      "sha256": "10926e3499781f5648486bd30aab04dd679db6d1a81c9f4eaf064da15aeb43b6",
+      "path": "bin/unlock-test_linux_amd64"
+    },
+    "arm6": {
+      "url": "https://github.com/HsukqiLee/MediaUnlockTest/releases/download/v1.9.10-1788951725/unlock-test_linux_arm6",
+      "sha256": "1fb2020f9c3ddc2c09efa55230d56e55733cbaafcb9c6f2f04e7f474b599a85b",
+      "path": "bin/unlock-test_linux_arm6"
+    },
+    "arm64": {
+      "url": "https://github.com/HsukqiLee/MediaUnlockTest/releases/download/v1.9.10-1788951725/unlock-test_linux_arm64",
+      "sha256": "16bd9d56b448ff690918ab485eb812a40d09e701a7407a8eb3146deac5433ca3",
+      "path": "bin/unlock-test_linux_arm64"
+    },
+    "arm7": {
+      "url": "https://github.com/HsukqiLee/MediaUnlockTest/releases/download/v1.9.10-1788951725/unlock-test_linux_arm7",
+      "sha256": "0c408f7d875f881ebc18db96312422fbf88df1d9095f5122b6aa00a73aec0a3a",
+      "path": "bin/unlock-test_linux_arm7"
+    }
+  },
+  "worker_sha256": "f7beed3a65145e65a4f1e812b109d10be5e432f7eb6fa414bca5563412c25d20",
+  "installer_sha256": "edf139ffe027edb6fccf79a968126e1c90b559ad8d84b7bb8f43614ac24a8737"
+}

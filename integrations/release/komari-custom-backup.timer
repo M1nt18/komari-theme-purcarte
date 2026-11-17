@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily Komari core and custom state backup
+[Timer]
+OnCalendar=*-*-* 03:15:00 Asia/Shanghai
+RandomizedDelaySec=10m
+Persistent=true
+[Install]
+WantedBy=timers.target

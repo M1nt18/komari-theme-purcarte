@@ -1,0 +1,61 @@
+.detail-overlay {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(1160px, calc(100vw - 64px));
+  max-width: none;
+  height: min(1000px, calc(100dvh - 48px));
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--accent-5, #d8d1e3);
+  border-radius: 18px;
+  color: var(--foreground, #241d2f);
+  background: var(--background, #f8f7fc);
+  box-shadow: 0 12px 32px #100a294d;
+}
+.detail-overlay::backdrop { background: #14102280; }
+
+/* Preserve the mounted homepage and its scroll position, but do not raster its
+   many glass cards underneath an open modal. */
+.detail-home-background[inert] { visibility: hidden; }
+
+/* Tailwind's utility layer uses !important for glass cards. Important rules
+   in an earlier layer win over those utilities; an unlayered override loses. */
+@layer base {
+  .detail-overlay .purcarte-blur {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+.detail-overlay .fade-in,
+.detail-overlay .fade-out { animation: none; }
+.detail-overlay-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.detail-overlay-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  min-height: 48px;
+  padding: 5px 16px 5px 24px;
+  border-bottom: 1px solid var(--accent-4, #e6e1ed);
+  font-size: 14px;
+  font-weight: 600;
+}
+.detail-overlay-close {
+  display: grid; place-items: center; width: 36px; height: 36px;
+  border-radius: 9px; font-size: 28px; line-height: 1; cursor: pointer;
+}
+.detail-overlay-close:hover { background: var(--accent-a3, #a08bbb20); }
+.detail-overlay-close:focus-visible { outline: 2px solid var(--accent-9, #8760ba); }
+.detail-overlay-content { flex: 1; min-height: 0; overflow: hidden; }
+.detail-overlay-loading { padding: 48px; text-align: center; }
+.detail-overlay main.max-w-screen-2xl {
+  width: 100% !important; max-width: none !important; padding: 0 22px 20px !important;
+}
+.detail-overlay [class~="min-h-screen"] { min-height: 100%; }
+@media (max-width: 760px) {
+  .detail-overlay { width: calc(100vw - 16px); height: calc(100dvh - 24px); border-radius: 13px; }
+  .detail-overlay-toolbar { padding-inline: 14px 8px; min-height: 44px; }
+  .detail-overlay main.max-w-screen-2xl { padding: 0 12px 16px !important; }
+}

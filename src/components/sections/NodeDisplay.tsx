@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import type { NodeData } from "@/types/node";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppConfig } from "@/config";
 import { useLocale } from "@/config/hooks";
-import Instance from "@/pages/instance/Instance";
-import PingChart from "@/pages/instance/PingChart";
+const Instance = lazy(() => import("@/pages/instance/Instance"));
+const PingChart = lazy(() => import("@/pages/instance/PingChart"));
 import { X } from "lucide-react";
 
 interface NodeDetailModalProps {
@@ -45,14 +45,14 @@ export const NodeDetailModal = ({ node, onClose }: NodeDetailModalProps) => {
           <h2 className="text-xl font-bold">
             {t("node.details", { name: node.name })}
           </h2>
-          <button onClick={handleClose}>
+          <button onClick={handleClose} aria-label="关闭节点简要信息">
             <X className="h-6 w-6" />
           </button>
         </div>
         <ScrollArea
           className="h-[calc(80vh-100px)]"
           viewportProps={{ className: "p-2" }}>
-          <div className="space-y-4 @container">
+          <Suspense fallback={<div className="p-4">正在读取详情…</div>}><div className="space-y-4 @container">
             {enableInstanceDetail && node && <Instance node={node} />}
             {enablePingChart && (
               <PingChart node={node} hours={pingChartTimeInPreview} />
@@ -64,7 +64,7 @@ export const NodeDetailModal = ({ node, onClose }: NodeDetailModalProps) => {
                 </div>
               </div>
             )}
-          </div>
+          </div></Suspense>
         </ScrollArea>
       </div>
     </div>
@@ -84,7 +84,7 @@ export const NodeDisplayContainer = ({
 
   return (
     <>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] gap-4">
+      <div className="node-grid-layout grid gap-5">
         {nodes.map((node) => children(node, () => setSelectedNode(node)))}
       </div>
       {selectedNode && (

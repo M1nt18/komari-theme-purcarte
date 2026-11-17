@@ -4,10 +4,13 @@ import { useLocale } from "@/config/hooks";
 import { usePingChart } from "@/hooks/usePingChart";
 import { calculateTaskStats } from "@/utils/RecordHelper";
 import { ActivityIcon } from "lucide-react";
+import { memo, useMemo } from "react";
+import { nodeTaskName } from '@/config/node-tasks';
 
 interface NodeCardPingChartProps {
   node: NodeData;
   compact?: boolean;
+  singleCarrier?: string;
 }
 
 interface PingCardStats {
@@ -180,35 +183,52 @@ function buildDisplayData(
   };
 }
 
-export function NodeCardPingChart({
+export const NodeCardPingChart = memo(function NodeCardPingChart({
   node,
   compact = false,
+  singleCarrier,
 }: NodeCardPingChartProps) {
   const {
     enableCardPingChart,
     cardPingChartTaskName,
+    cardPingChartNodeTasks,
     cardPingChartFallbackTaskId,
     cardPingChartHours,
     cardPingChartMaxBars,
   } = useAppConfig();
   const { t } = useLocale();
-  const { loading, pingHistory } = usePingChart(node, cardPingChartHours);
+  const selectedTaskName = singleCarrier ?? nodeTaskName(cardPingChartNodeTasks, node.uuid, cardPingChartTaskName);
+  const { loading, pingHistory } = usePingChart(node, cardPingChartHours, enableCardPingChart);
+
+  // Live CPU/network updates do not change this history. Build only the active
+  // presentation, once per history/configuration change instead of every tick.
+  const compactData = useMemo(() => {
+    const tasks = compact && enableCardPingChart && pingHistory?.tasks
+      ? pickTasks(pingHistory.tasks, selectedTaskName, cardPingChartFallbackTaskId)
+      : [];
+    return buildDisplayData(compact ? pingHistory?.records ?? [] : [], tasks,
+      cardPingChartMaxBars, cardPingChartHours);
+  }, [compact, enableCardPingChart, pingHistory, selectedTaskName,
+    cardPingChartFallbackTaskId, cardPingChartMaxBars, cardPingChartHours]);
+
+  const selectedData = useMemo(() => {
+    if (!enableCardPingChart || compact || !selectedTaskName || !pingHistory) return null;
+    const task = pickTasks(pingHistory.tasks ?? [], selectedTaskName, cardPingChartFallbackTaskId)[0];
+    return task ? buildDisplayData(pingHistory.records ?? [], [task],
+      cardPingChartMaxBars, cardPingChartHours) : null;
+  }, [enableCardPingChart, compact, selectedTaskName, pingHistory,
+    cardPingChartMaxBars, cardPingChartHours, cardPingChartFallbackTaskId]);
+
+  const networkData = useMemo(() => {
+    if (!enableCardPingChart || compact || selectedTaskName || !pingHistory) return [];
+    return pickNetworkTasks(pingHistory.tasks ?? []).map(task => ({
+      task, ...buildDisplayData(pingHistory.records ?? [], [task],
+        cardPingChartMaxBars, cardPingChartHours),
+    }));
+  }, [enableCardPingChart, compact, selectedTaskName, pingHistory,
+    cardPingChartMaxBars, cardPingChartHours]);
 
   if (!enableCardPingChart) return null;
-
-  const compactTasks = pingHistory?.tasks
-    ? pickTasks(
-        pingHistory.tasks,
-        cardPingChartTaskName,
-        cardPingChartFallbackTaskId
-      )
-    : [];
-  const compactData = buildDisplayData(
-    pingHistory?.records ?? [],
-    compactTasks,
-    cardPingChartMaxBars,
-    cardPingChartHours
-  );
 
   if (compact) {
     return (
@@ -240,15 +260,39 @@ export function NodeCardPingChart({
     );
   }
 
-  const networkData = pickNetworkTasks(pingHistory?.tasks ?? []).map((task) => ({
-    task,
-    ...buildDisplayData(
-      pingHistory?.records ?? [],
-      [task],
-      cardPingChartMaxBars,
-      cardPingChartHours
-    ),
-  }));
+  if (selectedTaskName) {
+    return (
+      <div className="grid grid-cols-2 gap-4 border-t border-(--accent-4)/50 py-2 text-xs">
+        <div className="min-h-16 rounded-lg px-3 py-2">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-secondary-foreground">延迟</span>
+            <strong className="font-medium tabular-nums text-(--accent-11)">
+              {selectedData && selectedData.stats.latestValue !== null
+                ? Math.round(selectedData.stats.latestValue) + " ms"
+                : loading
+                ? "..."
+                : "--"}
+            </strong>
+          </div>
+          <LatencyBars records={selectedData?.bars ?? []} />
+        </div>
+        <div className="min-h-16 rounded-lg px-3 py-2">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-secondary-foreground">丢包</span>
+            <strong
+              className={`font-medium tabular-nums ${
+                selectedData?.stats.loss
+                  ? "text-red-500"
+                  : "text-secondary-foreground"
+              }`}>
+              {selectedData ? selectedData.stats.loss.toFixed(1) + "%" : "--"}
+            </strong>
+          </div>
+          <LossBars records={selectedData?.bars ?? []} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="border-y border-(--accent-4)/50 py-2 text-xs">
@@ -300,7 +344,8 @@ export function NodeCardPingChart({
       </div>
     </div>
   );
-}
+}, (previous, next) => previous.node.uuid === next.node.uuid
+  && previous.compact === next.compact && previous.singleCarrier === next.singleCarrier);
 
 function getLatencyColor(value: number): string {
   if (value < 0) return LOSS_COLOR;
@@ -315,16 +360,17 @@ function LatencyBars({ records }: { records: PingHistoryRecord[] }) {
   }
 
   return (
-    <div className="flex h-2 min-w-0 flex-1 items-end gap-px overflow-hidden">
+    <div className="flex h-9 preview-ping-chart-up min-w-0 flex-1 items-end gap-0.5 overflow-hidden">
       {records.map((record, index) => {
         const failed = record.value < 0;
         return (
           <span
             key={record.time + "-" + index}
-            className="h-2 w-0.5 min-h-2 rounded-sm"
+            className="min-w-0 flex-1 rounded-t-sm"
             style={{
               backgroundColor: getLatencyColor(record.value),
               opacity: failed ? LOSS_OPACITY : 0.95,
+              height: "48%",
             }}
           />
         );
@@ -339,16 +385,17 @@ function LossBars({ records }: { records: PingHistoryRecord[] }) {
   }
 
   return (
-    <div className="flex h-2 min-w-0 flex-1 items-end gap-px overflow-hidden">
+    <div className="flex h-9 preview-ping-chart-up min-w-0 flex-1 items-end gap-0.5 overflow-hidden">
       {records.map((record, index) => {
         const failed = record.value < 0;
         return (
           <span
             key={record.time + "-" + index}
-            className="h-2 w-0.5 min-h-2 rounded-sm"
+            className="min-w-0 flex-1 rounded-t-sm"
             style={{
               backgroundColor: failed ? LOSS_COLOR : OK_COLOR,
               opacity: failed ? LOSS_OPACITY : 0.75,
+              height: "48%",
             }}
           />
         );

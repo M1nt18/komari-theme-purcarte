@@ -2,18 +2,20 @@ import path from "path";
 import fs from "fs";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, type UserConfig } from "vite";
+import { reviewPreview } from './tools/review-preview';
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(async ({ mode, command }): Promise<UserConfig> => {
+  if (mode === 'review' && command === 'build') throw new Error('Review mode is local development only');
   const env = loadEnv(mode, process.cwd());
-  const apiTarget = env.VITE_API_TARGET || "http://localhost:3000";
-
+  const apiTarget = env.VITE_API_TARGET || "http://127.0.0.1:3000";
   return {
-    base: "/themes/PurCarte/dist/",
+    base: mode === 'review' ? '/' : env.VITE_RELEASE_BASE || "/themes/PurCarte/dist/",
     plugins: [
       react(),
       tailwindcss(),
+      ...(mode === 'review' ? [reviewPreview(apiTarget)] : []),
       {
         name: "exclude-examples",
         apply: "build",
@@ -34,7 +36,7 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       assetsDir: "purcarte-assets",
-      outDir: "dist",
+      outDir: env.VITE_RELEASE_OUT || "dist",
       rollupOptions: {
         output: {
           // go embed ignore files start with '_'
@@ -47,13 +49,14 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      host: "0.0.0.0",
+      host: "127.0.0.1",
       proxy: {
+        ...(mode === 'review' ? { '/themes': { target: apiTarget, changeOrigin: true, secure: true } } : {}),
         "/api": {
           target: apiTarget,
           changeOrigin: true,
           ws: true,
-          secure: false,
+          secure: true,
           headers: {
             Origin: apiTarget,
           },
