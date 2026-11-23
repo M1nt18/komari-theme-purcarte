@@ -77,9 +77,13 @@ export function adaptForecastPayload(payload) {
     summary:{total_nodes:nodes.length,timezone_offset:8},nodes};
 }
 
-export function forecastExpiresAt(data) {
-  const generated=Date.parse(data?.generated_at||'');
-  if(!Number.isFinite(generated))return 0;
-  const boundaries=(data.nodes||[]).map(n=>Date.parse(n.period_end||`${n.cycle.cycleEnd}T00:00:00+08:00`));
-  return Math.min(generated+120000,...boundaries);
+export function forecastExpiresAt(data, generated = Date.parse(data.generated_at || '')) {
+  if (!Number.isFinite(generated)) return 0;
+  let expires = generated + 120000;
+  for (const node of data.nodes) {
+    const end = Date.parse(node.period_end || `${node.cycle?.cycleEnd}T00:00:00+08:00`);
+    if (!Number.isFinite(end)) return 0;
+    expires = Math.min(expires, end);
+  }
+  return expires;
 }

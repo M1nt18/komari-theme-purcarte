@@ -23,8 +23,24 @@ export function useUnlockSnapshot(uuid: string) {
     const controller = new AbortController();
     let active = true;
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    let nextPoll: (() => Promise<void>) | undefined;
     let canProbe = false;
     let isAdmin = false;
+
+    function runPendingPoll() {
+      clearTimeout(pollTimer);
+      if (!active || document.hidden || !nextPoll) return;
+      const poll = nextPoll;
+      nextPoll = undefined;
+      void poll();
+    }
+
+    function schedule(poll: () => Promise<void>, delay: number) {
+      if (!active) return;
+      clearTimeout(pollTimer);
+      nextPoll = poll;
+      if (!document.hidden) pollTimer = setTimeout(runPendingPoll, delay);
+    }
 
     async function request(path: string, init: RequestInit = {}) {
       const timeout = new AbortController();
@@ -96,9 +112,9 @@ export function useUnlockSnapshot(uuid: string) {
         const snapshot = await readSnapshot();
         if (!active) return;
         if (showSnapshot(snapshot)) {
-          pollTimer = setTimeout(pollResult, snapshot.preview ? 500 : 3000);
+          schedule(pollResult, snapshot.preview ? 500 : 3000);
         } else if (snapshot.nodes[uuid]?.workerInstalled === false) {
-          pollTimer = setTimeout(pollResult, 15000);
+          schedule(pollResult, 15000);
         }
       } catch (error) {
         fail(error);
@@ -134,7 +150,7 @@ export function useUnlockSnapshot(uuid: string) {
           snapshot.activeTask &&
           !alreadyRunning
         ) {
-          pollTimer = setTimeout(initialize, snapshot.preview ? 500 : 3000);
+          schedule(initialize, snapshot.preview ? 500 : 3000);
           return;
         }
 
@@ -153,20 +169,23 @@ export function useUnlockSnapshot(uuid: string) {
           if (response.data?.reason === "already_running" && !alreadyRunning) {
             throw new Error("其他检测正在运行，请稍后再试。");
           }
-          if (active) await pollResult();
+          if (active) schedule(pollResult, 0);
         } else if (alreadyRunning) {
-          pollTimer = setTimeout(pollResult, snapshot.preview ? 500 : 3000);
+          schedule(pollResult, snapshot.preview ? 500 : 3000);
         } else if (node?.workerInstalled === false) {
-          pollTimer = setTimeout(pollResult, 15000);
+          schedule(pollResult, 15000);
         }
       } catch (error) {
         fail(error);
       }
     }
 
-    void initialize();
+    document.addEventListener("visibilitychange", runPendingPoll);
+    nextPoll = initialize;
+    runPendingPoll();
     return () => {
       active = false;
+      document.removeEventListener("visibilitychange", runPendingPoll);
       controller.abort();
       clearTimeout(pollTimer);
     };

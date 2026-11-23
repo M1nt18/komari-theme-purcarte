@@ -135,7 +135,7 @@ class ApiService {
       );
       return response.status === "success" ? response.data.records : [];
     }
-    const response = await this.get<NodeStats[]>(`/api/recent/${uuid}`);
+    const response = await this.get<NodeStats[]>(`/api/recent/${encodeURIComponent(uuid)}`);
     if (response.status === "success" && Array.isArray(response.data)) {
       return response.data.map((stats) =>
         convertNodeStatsToRpcNodeStatus(stats, uuid, true)
@@ -163,7 +163,7 @@ class ApiService {
     const response = await this.get<{
       count: number;
       records: HistoryRecord[];
-    }>(`/api/records/load?uuid=${uuid}&hours=${hours}`);
+    }>(`/api/records/load?uuid=${encodeURIComponent(uuid)}&hours=${hours}`);
     return response.status === "success" ? response.data : null;
   }
 
@@ -191,7 +191,7 @@ class ApiService {
       return null;
     }
     const response = await this.get<PingHistoryResponse>(
-      `/api/records/ping?uuid=${uuid}&hours=${hours}`
+      `/api/records/ping?uuid=${encodeURIComponent(uuid)}&hours=${hours}`
     );
     return response.status === "success" ? response.data : null;
   }
@@ -308,9 +308,7 @@ export const apiService = new ApiService();
 // WebSocket 连接管理
 export class WebSocketService {
   private ws: WebSocket | null = null;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectInterval = 5000;
+  private retryDelayMs = 2000;
   private listeners: Set<(data: any) => void> = new Set();
   private url: string;
   private statusInterval: ReturnType<typeof setInterval> | null = null;
@@ -330,7 +328,11 @@ export class WebSocketService {
   }
 
   connect() {
-    this.stopped = false;
+    if (this.stopped) {
+      this.stopped = false;
+      globalThis.window?.addEventListener("online", this.resume);
+      globalThis.document?.addEventListener("visibilitychange", this.onVisibilityChange);
+    }
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     if (this.ws && this.ws.readyState < 2) {
       return;
@@ -350,7 +352,7 @@ export class WebSocketService {
       this.ws.onopen = () => {
         if (this.ws !== socket || this.stopped) return;
         console.log(`WebSocket connected to ${endpoint}`);
-        this.reconnectAttempts = 0;
+        this.retryDelayMs = 2000;
         this.sendUpdateRequest();
         this.startStatusUpdates();
       };
@@ -369,14 +371,14 @@ export class WebSocketService {
                 online: string[];
                 data: { [uuid: string]: NodeStats };
               };
-              if (oldData.online && oldData.data) {
+              if (Array.isArray(oldData.online) && oldData.data) {
+                const online = new Set(oldData.online);
                 const convertedData: RpcNodeStatusMap = {};
                 for (const uuid in oldData.data) {
-                  const isOnline = oldData.online.includes(uuid);
                   convertedData[uuid] = convertNodeStatsToRpcNodeStatus(
                     oldData.data[uuid],
                     uuid,
-                    isOnline
+                    online.has(uuid)
                   );
                 }
                 this.listeners.forEach((listener) => listener(convertedData));
@@ -408,15 +410,11 @@ export class WebSocketService {
 
   private reconnect() {
     if (this.stopped || this.reconnectTimer) return;
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++;
-      console.log(
-        `Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`
-      );
-      this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this.connect(); }, this.reconnectInterval);
-    } else {
-      console.error("Max reconnection attempts reached");
-    }
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, this.retryDelayMs);
+    this.retryDelayMs = Math.min(this.retryDelayMs * 2, 30000);
   }
 
   private send(data: string) {
@@ -446,6 +444,9 @@ export class WebSocketService {
 
   disconnect() {
     this.stopped = true;
+    this.retryDelayMs = 2000;
+    globalThis.window?.removeEventListener("online", this.resume);
+    globalThis.document?.removeEventListener("visibilitychange", this.onVisibilityChange);
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     const socket = this.ws;
     this.ws = null;
@@ -455,22 +456,30 @@ export class WebSocketService {
 
   private startStatusUpdates() {
     this.stopStatusUpdates();
-    globalThis.document?.addEventListener("visibilitychange", this.refreshOnReturn);
     this.statusInterval = setInterval(() => {
       this.sendUpdateRequest();
     }, 2000);
   }
 
   private stopStatusUpdates() {
-    globalThis.document?.removeEventListener("visibilitychange", this.refreshOnReturn);
     if (this.statusInterval) {
       clearInterval(this.statusInterval);
       this.statusInterval = null;
     }
   }
 
-  private refreshOnReturn = () => {
-    if (!globalThis.document?.hidden) this.sendUpdateRequest();
+  private onVisibilityChange = () => {
+    if (!globalThis.document?.hidden) this.resume();
+  };
+
+  private resume = () => {
+    if (this.stopped) return;
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.sendUpdateRequest();
+    } else if (!this.ws || this.ws.readyState >= WebSocket.CLOSING) {
+      this.retryDelayMs = 2000;
+      this.connect();
+    }
   };
 }
 

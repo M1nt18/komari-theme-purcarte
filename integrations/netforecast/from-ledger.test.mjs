@@ -41,6 +41,15 @@ test('old plugin preview responses pass through; stale production data fails exp
   assert.throws(() => adaptForecastPayload(value), /暂未同步/);
 });
 
+test('legacy forecasts using the receipt clock expire and malformed cycle dates are rejected', () => {
+  const receipt = Date.parse('2026-11-14T11:28:00Z');
+  const preview = { nodes: [], generated_at: 'invalid' };
+  assert.equal(forecastExpiresAt(preview, receipt), receipt + 120000);
+  assert.equal(forecastExpiresAt(preview), 0);
+  preview.nodes.push({ period_end: 'invalid' });
+  assert.equal(forecastExpiresAt(preview, receipt), 0);
+});
+
 test('complete zero-use days count while partial days never bias daily average',()=>{
   const value=input('sum');value.generated_at=value.last_sync='2026-11-16T04:00:00Z';
   value.nodes[0].quota.reset_day=1;

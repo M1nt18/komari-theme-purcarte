@@ -2,7 +2,9 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 from unlock_service import UnlockService, UnlockError, parse_output
 
 OUTPUT='''[ Globe (IPv4) ] ====================
@@ -77,6 +79,26 @@ class UnlockTests(unittest.TestCase):
         with self.assertRaises(UnlockError):self.api.poll(self.a,'22222222-2222-4222-8222-222222222222',101)
         self.assertEqual(self.api.snapshot([self.b],102)['nodes'].keys(),{'b'})
         self.assertIsNone(self.api.snapshot([self.b],102)['activeTask'])
+
+    def test_visible_snapshot_batches_queries_and_excludes_hidden_jobs(self):
+        self.api.poll(self.a, WORKER, 100)
+        self.api.poll(self.b, WORKER, 100)
+        nodes = [self.a] + [{'uuid': str(i)} for i in range(1000)]
+        statements = []
+        original_db = self.api.db
+
+        @contextmanager
+        def traced_db():
+            with original_db() as db:
+                db.set_trace_callback(statements.append)
+                yield db
+
+        with patch.object(self.api, 'db', traced_db):
+            snapshot = self.api.snapshot(nodes, 101)
+        self.assertEqual(list(snapshot['nodes']), [node['uuid'] for node in nodes])
+        self.assertEqual(snapshot['activeTask']['clients'], ['a'])
+        self.assertEqual(sum('WITH visible' in sql for sql in statements), 3)
+        self.assertFalse(snapshot['nodes']['999']['workerInstalled'])
 
     def test_offline_and_cooldown_checks(self):
         job=self.api.poll(self.a,WORKER,100)['job'];self.finish(job)

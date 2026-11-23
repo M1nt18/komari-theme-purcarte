@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState, lazy, Suspense } from "react";
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BrowserRouter as Router,
@@ -47,7 +47,7 @@ const AppRoutes = ({
   setSearchTerm: (term: string) => void;
   isSettingsOpen: boolean;
   setIsSettingsOpen: (isOpen: boolean) => void;
-  headerRef: React.RefObject<HTMLElement | null>;
+  headerRef: React.RefCallback<HTMLElement>;
   headerHeight: number;
   footerHeight: number;
 }) => {
@@ -193,56 +193,35 @@ const AppRoutes = ({
   );
 };
 
+function useElementHeight() {
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    if (!element) {
+      setHeight(0);
+      return;
+    }
+    const measure = () => setHeight(element.offsetHeight);
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element]);
+  return [setElement, height] as const;
+}
+
 export const AppContent = () => {
   const { siteStatus, mainWidth, selectedFooterStyle } = useAppConfig();
   const { appearance, color } = useTheme();
   const [searchTerm, setSearchTerm] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const isMobile = useIsMobile();
-  const footerRef = useRef<HTMLElement | null>(null);
-  const [footerHeight, setFooterHeight] = useState(0);
-  const headerRef = useRef<HTMLElement | null>(null);
-  const [headerHeight, setHeaderHeight] = useState(0);
-
-  useEffect(() => {
-    const header = headerRef.current;
-    if (!header) return;
-
-    if (typeof ResizeObserver === "undefined") {
-      setHeaderHeight(header.offsetHeight);
-      return;
-    }
-
-    const resizeObserver = new ResizeObserver(() => {
-      setHeaderHeight(header.offsetHeight);
-    });
-
-    resizeObserver.observe(header);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    const footer = footerRef.current;
-    if (!footer) return;
-
-    if (typeof ResizeObserver === "undefined") {
-      setFooterHeight(footer.offsetHeight);
-      return;
-    }
-
-    const resizeObserver = new ResizeObserver(() => {
-      setFooterHeight(footer.offsetHeight);
-    });
-
-    resizeObserver.observe(footer);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, []);
+  const [footerRef, footerHeight] = useElementHeight();
+  const [headerRef, headerHeight] = useElementHeight();
 
   useEffect(() => {
     document.documentElement.style.setProperty('--active-settings-width',isSettingsOpen&&!isMobile?'var(--setting-width)':'0px');

@@ -107,7 +107,7 @@ export const NodeGrid = ({ node, onShowDetails }: NodeGridProps) => {
         )}
         <button
           onClick={onShowDetails}
-          aria-label="查看节点详情"
+          aria-label={t("node.details", { name: node.name })}
           className="shrink-0">
           <Info className="h-5 w-5" />
         </button>
@@ -146,7 +146,7 @@ export const NodeGrid = ({ node, onShowDetails }: NodeGridProps) => {
           {enableSwap && (
             <UsageMetric
               label={t("node.swap")}
-              value={node.swap_total > 0 ? `${swapUsage.toFixed(0)}%` : "OFF"}
+              value={node.swap_total > 0 ? `${swapUsage.toFixed(0)}%` : t("node.off")}
               percentage={swapUsage}
               muted={node.swap_total <= 0}
             />
@@ -161,11 +161,11 @@ export const NodeGrid = ({ node, onShowDetails }: NodeGridProps) => {
         {enableCardConnectionMetrics && (
           <div className="grid grid-cols-2 gap-x-5 text-xs">
             <ConnectionMetric
-              label="TCP 连接"
+              label={t("chart.tcpConnections")}
               value={stats && isOnline ? stats.connections : 0}
             />
             <ConnectionMetric
-              label="UDP 连接"
+              label={t("chart.udpConnections")}
               value={stats && isOnline ? stats.connections_udp : 0}
             />
           </div>
@@ -250,13 +250,14 @@ function ConnectionMetric({ label, value }: { label: string; value: number }) {
 }
 
 function TrafficQuota({quota,title}:{quota:LedgerQuota|undefined;title:string}) {
+  const { t } = useLocale();
   const ready=quota&&Number.isFinite(quota.used_bytes)&&Number.isFinite(quota.limit_bytes);
   return <div className="space-y-2 text-xs" title={title}>
     <div className="flex items-center justify-between gap-2">
-      <span className="font-semibold text-secondary-foreground">{ready&&quota.limit_bytes<=0?'本期用量 ∞':'本期用量'}</span>
+      <span className="font-semibold text-secondary-foreground">{t("node.cycleUsage")}{ready&&quota.limit_bytes<=0?' ∞':''}</span>
       <strong className="font-medium tabular-nums">{ready
         ? <>{formatBytes(Math.max(0,quota.used_bytes))} / {quota.limit_bytes>0?formatBytes(quota.limit_bytes):'∞'}</>
-        : '待同步'}</strong>
+        : t("node.waitingForSync")}</strong>
     </div>
     <CycleTrafficBar quota={quota??{used_bytes:NaN,limit_bytes:NaN,period_start:'',period_end:''}} now={trafficStore.getServerTime()} />
   </div>;

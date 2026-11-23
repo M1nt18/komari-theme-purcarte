@@ -14,6 +14,19 @@ worker=importlib.util.module_from_spec(spec);spec.loader.exec_module(worker)
 
 
 class WorkerTests(unittest.TestCase):
+    def test_output_fits_utf8_and_wire_limits_even_for_an_old_outbox(self):
+        prefix = '中' * (worker.MAX_OUTPUT_BYTES // 3)
+        self.assertEqual(worker.decode_output((prefix + '文').encode()), prefix)
+        for output in (prefix + '\ufffd', '\x01' * worker.MAX_OUTPUT_BYTES):
+            body = {'id': '1', 'lease': 'test', 'exit_code': 0, 'output': output}
+            encoded = worker.encode_request(body)
+            sent = json.loads(encoded)
+            self.assertLessEqual(len(encoded), worker.MAX_REQUEST_BYTES)
+            self.assertLessEqual(len(sent['output'].encode()), worker.MAX_OUTPUT_BYTES)
+            self.assertTrue(output.startswith(sent['output']))
+            self.assertEqual(worker.encode_request(body), encoded)
+        self.assertEqual(json.loads(worker.encode_request({'output': prefix}))['output'], prefix)
+
     def test_missing_old_job_releases_outbox_but_forbidden_response_does_not(self):
         with tempfile.TemporaryDirectory() as temp:
             journal=Path(temp)/'outbox.json'

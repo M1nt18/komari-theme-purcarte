@@ -1,16 +1,122 @@
 import argparse
 import datetime as dt
+import http.client
 import json
 import logging
 import os
+import queue
 import threading
 import time
 import urllib.error
-import urllib.request
+import urllib.parse
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ledger import TrafficLedger
 from unlock_service import UnlockService, UnlockError
+
+
+class CoreClient:
+    """Direct connections to the configured core; credentials are per request."""
+    def __init__(self, url):
+        target = urllib.parse.urlsplit(url)
+        if target.scheme not in ('http', 'https') or not target.hostname or target.query or target.fragment:
+            raise ValueError('--core must be an HTTP(S) base URL')
+        self.connection_type = http.client.HTTPSConnection if target.scheme == 'https' else http.client.HTTPConnection
+        self.host, self.port = target.hostname, target.port
+        self.base_path = target.path.rstrip('/')
+        self.idle = queue.LifoQueue(maxsize=8)
+        self.visibility_lock = threading.Lock()
+        self.public_nodes = []
+        self.expires = 0
+
+    def get(self, path, headers):
+        try:
+            conn = self.idle.get_nowait()
+        except queue.Empty:
+            conn = None
+        # An idle connection may have been closed by the core. Only retry that
+        # case, and only these read-only GETs, on one fresh connection.
+        for _ in range(2):
+            reused = conn is not None
+            if not reused:
+                conn = self.connection_type(self.host, self.port, timeout=5)
+            try:
+                conn.request('GET', self.base_path + path, headers=headers)
+                with conn.getresponse() as response:
+                    if not 200 <= response.status < 300:
+                        raise urllib.error.HTTPError(path, response.status, response.reason, response.headers, None)
+                    payload = json.load(response)
+            except (ConnectionError, http.client.IncompleteRead):
+                if not reused:
+                    raise
+            else:
+                if conn.sock is not None:
+                    try:
+                        self.idle.put_nowait(conn)
+                        conn = None
+                    except queue.Full:
+                        pass
+                return payload
+            finally:
+                if conn is not None:
+                    conn.close()
+                    conn = None
+
+    def _nodes(self, headers):
+        core = self.get('/api/nodes', headers)
+        if core.get('status') != 'success' or not isinstance(core.get('data'), list):
+            raise RuntimeError('Core node visibility unavailable')
+        return [{'uuid': node['uuid'], 'name': node.get('name', node['uuid'])} for node in core['data']]
+
+    def visible_nodes(self, headers):
+        if headers:
+            return self._nodes(headers)
+        # Coalesce anonymous misses. Always ask the core again after expiry,
+        # including when refreshing fails or the site becomes private.
+        if not self.visibility_lock.acquire(timeout=5):
+            raise TimeoutError('Core visibility lookup timed out')
+        try:
+            if time.monotonic() >= self.expires:
+                self.public_nodes = self._nodes({})
+                self.expires = time.monotonic() + 5
+            return self.public_nodes
+        finally:
+            self.visibility_lock.release()
+
+    def close(self):
+        while True:
+            try:
+                self.idle.get_nowait().close()
+            except queue.Empty:
+                return
+
+
+class BoundedHTTPServer(ThreadingHTTPServer):
+    def __init__(self, address, handler, max_workers=32):
+        self.slots = threading.BoundedSemaphore(max_workers)
+        super().__init__(address, handler)
+
+    def process_request(self, request, client_address):
+        if not self.slots.acquire(blocking=False):
+            try:
+                request.setblocking(False)
+                request.sendall(b'HTTP/1.0 503 Service Unavailable\r\nRetry-After: 1\r\nContent-Length: 0\r\n\r\n')
+            except OSError:
+                pass
+            finally:
+                self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
 
 
 def main():
@@ -21,6 +127,10 @@ def main():
     parser.add_argument('--core', default='http://127.0.0.1:25774')
     parser.add_argument('--public-origin', default=os.environ.get('KOMARI_PUBLIC_ORIGIN',''))
     args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+    if not args.public_origin:
+        logging.warning('Browser probe requests with Origin will be rejected. Set --public-origin or KOMARI_PUBLIC_ORIGIN to the public HTTPS origin.')
+    core = CoreClient(args.core)
     ledger = TrafficLedger(args.source, args.state)
     unlock = UnlockService(args.source, Path(args.state).parent / 'unlock.sqlite')
     stop = threading.Event()
@@ -42,6 +152,12 @@ def main():
             stop.wait(15)
 
     class Handler(BaseHTTPRequestHandler):
+        # StreamRequestHandler applies this before parsing even the request line.
+        timeout = 15
+
+        def auth_headers(self):
+            return {key: self.headers[key] for key in ('Cookie', 'Authorization') if self.headers.get(key)}
+
         def do_GET(self):
             if self.path == '/_health':
                 try:
@@ -63,19 +179,15 @@ def main():
                 return
             try:
                 # Delegate visibility and private-site authorization to Komari.
-                headers = {key: self.headers[key] for key in ('Cookie', 'Authorization') if self.headers.get(key)}
-                request = urllib.request.Request(args.core + '/api/nodes', headers=headers)
-                with urllib.request.urlopen(request, timeout=5) as response:
-                    core = json.load(response)
-                if core.get('status') != 'success' or not isinstance(core.get('data'), list):
-                    raise RuntimeError('Core node visibility unavailable')
-                visible = {node['uuid'] for node in core['data']}
-                if path == '/api/plugin/net-forecast/overview':
-                    self.send_json(200, ledger.forecast_input(visible))
-                elif path == '/api/plugin/unlock-test/snapshot':
-                    self.send_json(200, {'status':'success','data':unlock.snapshot(core['data'])})
+                nodes = core.visible_nodes(self.auth_headers())
+                if path == '/api/plugin/unlock-test/snapshot':
+                    self.send_json(200, {'status':'success','data':unlock.snapshot(nodes)})
                 else:
-                    self.send_json(200, {'status': 'success', 'data': ledger.snapshot(visible)})
+                    visible = {node['uuid'] for node in nodes}
+                    if path == '/api/plugin/net-forecast/overview':
+                        self.send_json(200, ledger.forecast_input(visible))
+                    else:
+                        self.send_json(200, {'status': 'success', 'data': ledger.snapshot(visible)})
             except urllib.error.HTTPError as error:
                 self.send_json(error.code if error.code in (401, 403) else 503, {'status': 'error', 'message': 'Traffic snapshot unavailable'})
             except Exception:
@@ -88,7 +200,6 @@ def main():
                 self.send_json(404, {'status':'error'})
                 return
             try:
-                self.connection.settimeout(15)
                 size = int(self.headers.get('Content-Length','0'))
                 if not 0 < size <= 300000 or self.headers.get('Content-Type','').split(';')[0] != 'application/json':
                     raise UnlockError(400, '需要有效的 JSON 请求')
@@ -99,15 +210,13 @@ def main():
                     if origin and origin != args.public_origin.rstrip('/'):
                         raise UnlockError(403,'请求来源无效')
                     if self.headers.get('Sec-Fetch-Site') == 'cross-site':raise UnlockError(403,'请求来源无效')
-                    headers = {k:self.headers[k] for k in ('Cookie','Authorization') if self.headers.get(k)}
-                    with urllib.request.urlopen(urllib.request.Request(args.core+'/api/me',headers=headers),timeout=5) as response:
-                        me = json.load(response)
+                    headers = self.auth_headers()
+                    me = core.get('/api/me', headers)
                     if not me.get('logged_in'):raise UnlockError(403,'请以管理员身份登录后检测')
                     clients = data.get('clients')
                     if not isinstance(clients,list) or len(clients)!=1 or not isinstance(clients[0],str):
                         raise UnlockError(400,'请选择一台机器进行检测')
-                    with urllib.request.urlopen(urllib.request.Request(args.core+'/api/nodes',headers=headers),timeout=5) as response:
-                        visible = {n['uuid'] for n in json.load(response)['data']}
+                    visible = {n['uuid'] for n in core.visible_nodes(headers)}
                     if clients[0] not in visible:raise UnlockError(404,'节点不存在')
                     result = unlock.trigger(clients[0],data.get('onlyIfMissing') is True)
                 else:
@@ -144,15 +253,15 @@ def main():
         def log_message(self, *_args):
             pass
 
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
     worker = threading.Thread(target=collect, daemon=True)
     worker.start()
-    server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
+    server = BoundedHTTPServer(('127.0.0.1', args.port), Handler)
     try:
         server.serve_forever()
     finally:
         stop.set()
         server.server_close()
+        core.close()
 
 
 if __name__ == '__main__':

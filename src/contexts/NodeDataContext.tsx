@@ -2,6 +2,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   createContext,
   useContext,
   type ReactNode,
@@ -99,7 +100,7 @@ function useNodesInternal() {
     );
   }, [staticNodes]);
 
-  return {
+  return useMemo(() => ({
     nodes: staticNodes,
     loading,
     error,
@@ -110,7 +111,8 @@ function useNodesInternal() {
     getRecentLoadHistory,
     getNodesByGroup,
     getGroups,
-  };
+  }), [staticNodes, loading, error, refreshNodes, getNodeDetails, getLoadHistory,
+    getPingHistory, getRecentLoadHistory, getNodesByGroup, getGroups]);
 }
 
 export type NodeDataContextType = ReturnType<typeof useNodesInternal>;

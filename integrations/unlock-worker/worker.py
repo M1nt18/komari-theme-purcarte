@@ -14,6 +14,8 @@ from pathlib import Path
 
 COMMAND = ['/opt/komari-unlock-worker/unlock-test', '-region', '0,11', '-conc', '10', '-show-active=false']
 ACTIVE_PROCESS = None
+MAX_OUTPUT_BYTES = 262144
+MAX_REQUEST_BYTES = 300000
 
 
 def atomic_json(path, data):
@@ -26,9 +28,36 @@ def atomic_json(path, data):
     tmp.replace(path)
 
 
+def decode_output(raw):
+    return raw[:MAX_OUTPUT_BYTES].decode('utf-8', errors='ignore')
+
+
+def encode_request(body):
+    def encode(value):
+        return json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+
+    if 'output' not in body:
+        return encode(body)
+    # Older outboxes can contain an oversized trailing replacement character.
+    output = decode_output(body['output'].encode('utf-8'))
+    payload = encode({**body, 'output': output})
+    if len(payload) <= MAX_REQUEST_BYTES:
+        return payload
+    # JSON escapes quotes/control characters, even when the raw output fits.
+    # Keep the longest prefix that also fits the HTTP endpoint's body limit.
+    low, high = 0, len(output)
+    while low < high:
+        mid = (low + high + 1) // 2
+        if len(encode({**body, 'output': output[:mid]})) <= MAX_REQUEST_BYTES:
+            low = mid
+        else:
+            high = mid - 1
+    return encode({**body, 'output': output[:low]})
+
+
 def request(config, path, body=None):
     req = urllib.request.Request(config['endpoint'] + '/api/plugin/unlock-test/' + path,
-        data=json.dumps(body).encode() if body is not None else None,
+        data=encode_request(body) if body is not None else None,
         headers={'Authorization':'Bearer '+config['token'], 'Content-Type':'application/json', 'User-Agent':'Komari-Unlock-Worker/1'})
     with urllib.request.urlopen(req, timeout=20) as response:
         payload = json.load(response)
@@ -51,11 +80,11 @@ def run_detection():
         env={**os.environ,'NO_COLOR':'1','TERM':'dumb'})
     try:
         output,_ = ACTIVE_PROCESS.communicate(timeout=300)
-        return ACTIVE_PROCESS.returncode, output[:262144].decode('utf-8','replace')
+        return ACTIVE_PROCESS.returncode, decode_output(output)
     except subprocess.TimeoutExpired:
         os.killpg(ACTIVE_PROCESS.pid,signal.SIGKILL)
         output,_ = ACTIVE_PROCESS.communicate()
-        return 124, output[:262144].decode('utf-8','replace')
+        return 124, decode_output(output)
     finally:
         ACTIVE_PROCESS = None
 

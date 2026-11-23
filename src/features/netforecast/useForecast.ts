@@ -24,7 +24,15 @@ export function useForecast(enabled: boolean) {
         const result=adaptForecastPayload(await response.json());
         if(!result.ok||!Array.isArray(result.nodes))throw new Error('流量预测数据格式异常。');
         if(!active)return;
-        expires=forecastExpiresAt(result);received=performance.now();serverTime=Date.parse(result.generated_at||'');
+        // Older plugin responses may omit the server clock. The ledger adapter
+        // separately validates timestamps on production ledger responses.
+        const parsed = Date.parse(result.generated_at || '');
+        const generated = Number.isFinite(parsed) ? parsed : Date.now();
+        const validUntil = forecastExpiresAt(result, generated);
+        if (validUntil <= generated) throw new Error('流量预测快照已过期或周期时间无效。');
+        serverTime = generated;
+        received = performance.now();
+        expires = validUntil;
         setData(result);setError(null);
       }catch(reason){
         if(active){

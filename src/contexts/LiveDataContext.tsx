@@ -1,6 +1,7 @@
 import {
   useState,
   useEffect,
+  useMemo,
   createContext,
   useContext,
   type ReactNode,
@@ -65,8 +66,9 @@ export const LiveDataProvider = ({
     }
   }, [initialLoadComplete, enableWebSocket]);
 
+  const value = useMemo(() => ({ liveData }), [liveData]);
   return (
-    <LiveDataContext.Provider value={{ liveData }}>
+    <LiveDataContext.Provider value={value}>
       {children}
     </LiveDataContext.Provider>
   );

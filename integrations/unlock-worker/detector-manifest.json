@@ -27,6 +27,6 @@
       "path": "bin/unlock-test_linux_arm7"
     }
   },
-  "worker_sha256": "f7beed3a65145e65a4f1e812b109d10be5e432f7eb6fa414bca5563412c25d20",
+  "worker_sha256": "3863eca22818d8c905f223581dc89c603eacee1f6dc3703ba54824c9ad58b6fd",
   "installer_sha256": "edf139ffe027edb6fccf79a968126e1c90b559ad8d84b7bb8f43614ac24a8737"
 }

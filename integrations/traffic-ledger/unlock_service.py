@@ -87,7 +87,7 @@ class UnlockService:
         token = authorization[7:] if authorization.startswith('Bearer ') else ''
         if not 12 <= len(token) <= 512:
             raise UnlockError(401, '节点身份无效')
-        db = sqlite3.connect(self.source.as_uri() + '?mode=ro', uri=True)
+        db = sqlite3.connect(self.source.as_uri() + '?mode=ro', uri=True, timeout=10)
         try:
             row = db.execute('SELECT uuid,name FROM clients WHERE token=?', (token,)).fetchone()
         finally:
@@ -191,22 +191,39 @@ class UnlockService:
 
     def snapshot(self, nodes, now=None):
         now = time.time() if now is None else now
+        names = {node['uuid']: node.get('name', node['uuid']) for node in nodes}
+        ids = list(names)
+        output, running = {}, []
         with self.db() as db:
             db.execute('BEGIN')
-            output, running = {}, []
-            for node in nodes:
-                uuid = node['uuid']
-                saved = db.execute('SELECT * FROM results WHERE uuid=?',(uuid,)).fetchone()
-                worker = db.execute('SELECT * FROM workers WHERE uuid=?',(uuid,)).fetchone()
-                active = db.execute("SELECT id FROM jobs WHERE uuid=? AND status IN ('queued','running') AND deadline>=?",(uuid,now)).fetchone()
-                if active:running.append(uuid)
-                output[uuid] = {'uuid':uuid, 'name':node.get('name',uuid),
-                    'services':json.loads(saved['services']) if saved else [],
-                    'updatedAt':iso_time(saved['updated']) if saved and saved['updated'] else None,
-                    'firstSuccessAt':iso_time(saved['first_success']) if saved and saved['first_success'] else None,
-                    'error':saved['error'] if saved else None,
-                    'workerInstalled':bool(worker),
-                    'workerOnline':bool(worker and (now-worker['last_seen']<90 or active))}
+            # Stay below the parameter limit on older SQLite builds. All joins
+            # use the visible UUID and the existing primary/active-job indexes.
+            for offset in range(0, len(ids), 500):
+                batch = ids[offset:offset + 500]
+                placeholders = ','.join(['(?)'] * len(batch))
+                rows = db.execute(f'''
+                    WITH visible(uuid) AS (VALUES {placeholders})
+                    SELECT v.uuid, r.services, r.updated, r.first_success, r.error,
+                           w.last_seen, j.id AS active_job
+                    FROM visible v LEFT JOIN results r ON r.uuid=v.uuid
+                    LEFT JOIN workers w ON w.uuid=v.uuid
+                    LEFT JOIN jobs j ON j.uuid=v.uuid AND j.status IN ('queued','running')
+                                    AND j.deadline>=?
+                ''', (*batch, now))
+                for row in rows:
+                    uuid = row['uuid']
+                    active = row['active_job'] is not None
+                    installed = row['last_seen'] is not None
+                    if active:
+                        running.append(uuid)
+                    output[uuid] = {
+                        'uuid': uuid, 'name': names[uuid],
+                        'services': json.loads(row['services']) if row['services'] else [],
+                        'updatedAt': iso_time(row['updated']) if row['updated'] else None,
+                        'firstSuccessAt': iso_time(row['first_success']) if row['first_success'] else None,
+                        'error': row['error'], 'workerInstalled': installed,
+                        'workerOnline': installed and (active or now - row['last_seen'] < 90),
+                    }
         return {'schemaVersion':1,'autoProbe':False,'manualExecutionRequired':False,'updatedAt':iso_time(now),
             'activeTask':{'clients':running,'phase':'running'} if running else None,
             'regionsCatalog':[{'id':v[0],'nameZh':v[1],'nameEn':k} for k,v in REGIONS.items()], 'nodes':output}

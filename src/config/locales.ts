@@ -11,6 +11,8 @@ export const defaultTexts = {
     swap: "SWAP",
     disk: "硬盘",
     traffic: "流量",
+    cycleUsage: "本期用量",
+    waitingForSync: "待同步",
     network: "网络",
     load: "负载",
     uptime: "在线:",
@@ -118,6 +120,9 @@ export const defaultTexts = {
   chart: {
     _: "图表信息",
     loading: "正在加载图表...",
+    loadingShort: "加载中...",
+    route: "线路",
+    packetLoss: "丢包",
     loadingData: "正在加载图表数据...",
     noData: "暂无数据",
     nodeOfflineCannotFetchLiveData: "节点已离线，无法获取实时数据",

@@ -1,8 +1,10 @@
 import sqlite3
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 from ledger import TrafficLedger, billable, cycle_bounds, timestamp, sql_time
 
 
@@ -17,6 +19,68 @@ def source_db(path):
 
 
 class LedgerTests(unittest.TestCase):
+    def test_requests_share_precomputed_data_but_filter_nodes_and_isolate_outputs(self):
+        with source_db(self.source) as db:
+            db.execute("INSERT INTO clients VALUES('b','private',0,'sum',1,NULL)")
+        self.sample('2026-11-14 04:01:00', 10, 20)
+        self.ledger.sync(self.now)
+        # No reader should open SQLite again within the current sync and time window.
+        with patch.object(self.ledger, 'connect', side_effect=AssertionError('unexpected read')):
+            def read(uuid):
+                visible = {uuid}
+                forecast = self.ledger.forecast_input(visible, self.now + 5)
+                self.assertEqual([node['uuid'] for node in forecast['nodes']], [uuid])
+                node = forecast['nodes'][0]
+                node['quota']['used_bytes'] = -1
+                if node['history']:
+                    node['history'][0]['samples'] = -1
+                snapshot = self.ledger.snapshot(visible, self.now + 6)
+                self.assertEqual(set(snapshot['nodes']), visible)
+                return snapshot['nodes'][uuid]['used_bytes']
+            with ThreadPoolExecutor(max_workers=8) as workers:
+                self.assertEqual(list(workers.map(read, ['b', 'a'] * 12)), [0, 30] * 12)
+            self.assertEqual(self.ledger.forecast_input({'a'}, self.now)['nodes'][0]['history'][0]['samples'], 1)
+        with source_db(self.source) as db:
+            db.execute("DELETE FROM clients WHERE uuid='b'")
+        self.ledger.sync(self.now + 15)
+        self.assertEqual(self.ledger.forecast_input({'b'}, self.now + 15)['nodes'], [])
+
+    def test_failed_sync_retains_last_commit_and_rolls_over_without_new_samples(self):
+        before_reset = timestamp('2026-11-12T15:59:59Z')
+        self.sample('2026-11-12 15:58:00', 10, 20)
+        self.ledger.sync(before_reset)
+        old = self.ledger.snapshot({'a'}, before_reset)
+        self.assertEqual(old['nodes']['a']['used_bytes'], 30)
+        self.sample('2026-11-12 15:59:00', -1, 10)
+        with self.assertRaises(ValueError):
+            self.ledger.sync(before_reset + 1)
+        forecast = self.ledger.forecast_input({'a'}, before_reset + 1)
+        self.assertEqual(forecast['last_sync'], old['last_sync'])
+        self.assertEqual(forecast['nodes'][0]['quota']['used_bytes'], 0)
+        day = forecast['nodes'][0]['history'][0]
+        self.assertFalse(day['is_today'])
+        self.assertEqual(day['out_bytes'] + day['in_bytes'], 30)
+
+    def test_existing_view_migrates_preserving_manual_and_counter_corrections(self):
+        self.sample('2026-11-14 03:01:00', 100, 100)
+        self.sample('2026-11-14 03:16:00', 100, 100)
+        self.ledger.sync(self.now)
+        bucket = timestamp('2026-11-14T03:00:00Z')
+        with self.ledger.connect() as db:
+            db.executescript("""
+                DROP VIEW verified_buckets;
+                CREATE VIEW verified_buckets AS SELECT uuid,bucket,upload,download FROM buckets;
+            """)
+            db.executemany('INSERT INTO counter_overcounts VALUES(?,?,?,?,?)', [
+                ('a', bucket, 's1', 70, 20), ('a', bucket, 's2', 80, 30),
+                ('a', bucket + 900, 's3', 50, 50),
+            ])
+            db.execute('INSERT INTO bucket_corrections VALUES(?,?,?,?,?)',
+                       ('a', bucket + 900, 10, 20, 'manual audit'))
+        self.ledger = TrafficLedger(self.source, self.state)
+        self.assertEqual(self.node()['upload_bytes'], 10)
+        self.assertEqual(self.node()['download_bytes'], 70)
+
     def test_standard_clients_without_custom_billing_columns_use_calendar_month(self):
         with source_db(self.source) as db:
             db.execute('ALTER TABLE clients DROP COLUMN traffic_reset_day')

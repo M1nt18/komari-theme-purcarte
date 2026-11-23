@@ -116,6 +116,17 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
     [config, previewConfig]
   );
 
+  const value = useMemo(() => ({
+    ...activeConfig,
+    titleText: activeConfig.titleText || publicSettings?.sitename || 'Komari',
+    publicSettings,
+    siteStatus,
+    texts,
+    previewConfig,
+    updatePreviewConfig,
+    reloadConfig,
+  }), [activeConfig, publicSettings, siteStatus, texts, previewConfig, updatePreviewConfig, reloadConfig]);
+
   if (!config) {
     return (
       configFailed
@@ -128,17 +139,7 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
   }
 
   return (
-    <ConfigContext.Provider
-      value={{
-        ...activeConfig,
-        titleText: activeConfig.titleText || publicSettings?.sitename || 'Komari',
-        publicSettings,
-        siteStatus,
-        texts,
-        previewConfig,
-        updatePreviewConfig,
-        reloadConfig,
-      }}>
+    <ConfigContext.Provider value={value}>
       {children}
     </ConfigContext.Provider>
   );

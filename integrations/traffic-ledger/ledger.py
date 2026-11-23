@@ -4,7 +4,9 @@ import calendar
 import datetime as dt
 import math
 import sqlite3
+import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from contextlib import contextmanager
 
@@ -76,11 +78,20 @@ def counter_overcount(reported, previous, current):
     return 0
 
 
+@dataclass(frozen=True)
+class _ReadModel:
+    bucket: int
+    last_sync: str
+    nodes: dict
+
+
 class TrafficLedger:
     def __init__(self, source_path, state_path):
         self.source_path = Path(source_path).resolve()
         self.state_path = Path(state_path).resolve()
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        self._read_lock = threading.Lock()
+        self._read_model = None
         with self.connect() as db:
             db.executescript("""
                 PRAGMA journal_mode=WAL;
@@ -130,16 +141,21 @@ class TrafficLedger:
                     PRIMARY KEY(uuid, bucket, sample_time)
                 );
                 CREATE INDEX IF NOT EXISTS counter_overcounts_time ON counter_overcounts(bucket);
-                CREATE VIEW IF NOT EXISTS verified_buckets AS
+                CREATE INDEX IF NOT EXISTS buckets_client_sample ON buckets(uuid,sample_at);
+                -- Replace the view atomically for both existing and new ledgers.
+                BEGIN IMMEDIATE;
+                DROP VIEW IF EXISTS verified_buckets;
+                CREATE VIEW verified_buckets AS
                     SELECT b.uuid, b.bucket,
-                           COALESCE(c.upload, MAX(0, b.upload - COALESCE(
-                               (SELECT SUM(d.upload) FROM counter_overcounts d
-                                WHERE d.uuid=b.uuid AND d.bucket=b.bucket), 0))) AS upload,
-                           COALESCE(c.download, MAX(0, b.download - COALESCE(
-                               (SELECT SUM(d.download) FROM counter_overcounts d
-                                WHERE d.uuid=b.uuid AND d.bucket=b.bucket), 0))) AS download
+                           COALESCE(c.upload, MAX(0, b.upload - COALESCE(d.upload, 0))) AS upload,
+                           COALESCE(c.download, MAX(0, b.download - COALESCE(d.download, 0))) AS download
                     FROM buckets b
-                    LEFT JOIN bucket_corrections c ON c.uuid=b.uuid AND c.bucket=b.bucket;
+                    LEFT JOIN bucket_corrections c ON c.uuid=b.uuid AND c.bucket=b.bucket
+                    LEFT JOIN (
+                        SELECT uuid,bucket,SUM(upload) AS upload,SUM(download) AS download
+                        FROM counter_overcounts GROUP BY uuid,bucket
+                    ) d ON d.uuid=b.uuid AND d.bucket=b.bucket;
+                COMMIT;
             """)
 
     @contextmanager
@@ -149,6 +165,10 @@ class TrafficLedger:
         try:
             with db:
                 yield db
+            if db.total_changes:
+                # Invalidate only after a successful commit, including manual corrections.
+                with self._read_lock:
+                    self._read_model = None
         finally:
             db.close()
 
@@ -280,9 +300,10 @@ class TrafficLedger:
                 if not counter_guard_active:
                     state.execute("INSERT INTO meta VALUES('counter_guard_active','1')")
                 if broad:state.execute("INSERT OR REPLACE INTO meta VALUES('last_reconcile',?)",(str(now),))
-                return len(nodes)
         finally:
             source.close()
+        self._read_at(now)
+        return len(nodes)
 
     @staticmethod
     def _record_counter_overcount(db, uuid, bucket, sample_time, upload, download):
@@ -316,84 +337,125 @@ class TrafficLedger:
         """, (uuid, start, end)).fetchone()
         return row[0], row[1]
 
+    def _read_at(self, now):
+        # All fields other than the response clock change at sync, or at a
+        # 15-minute boundary (coverage counts, local midnight and reset days).
+        bucket = int(now // BUCKET_SECONDS) * BUCKET_SECONDS
+        with self._read_lock:
+            if self._read_model is None or self._read_model.bucket != bucket:
+                with self.connect() as db:
+                    db.execute('BEGIN')
+                    self._read_model = self._build_read_model(db, bucket)
+            return self._read_model
+
+    @staticmethod
+    def _build_read_model(db, bucket):
+        last_sync = db.execute("SELECT value FROM meta WHERE key='last_sync'").fetchone()
+        if not last_sync:
+            raise RuntimeError('Initial traffic history import is still running')
+        # Both scalar lookups seek to an end of a covering index, including for
+        # nodes whose first sample predates the bounded daily history query.
+        clients = db.execute("""
+            SELECT c.*,
+                   (SELECT MIN(b.bucket) FROM buckets b WHERE b.uuid=c.uuid) AS first_bucket,
+                   (SELECT MAX(b.sample_at) FROM buckets b WHERE b.uuid=c.uuid) AS last_sample
+            FROM clients c
+        """).fetchall()
+        model = _ReadModel(bucket, iso_time(float(last_sync[0])), {})
+        if not clients:
+            return model
+        periods = {c['uuid']: cycle_bounds(bucket, c['reset_day']) for c in clients}
+        first_period = min(start for start, _ in periods.values())
+        last_end = max(end for _, end in periods.values())
+        calibrations = {(r['uuid'], r['period_start']): r for r in db.execute(
+            'SELECT * FROM calibrations WHERE period_start>=? AND period_start<?',
+            (first_period, last_end),
+        )}
+        today = int(dt.datetime.fromtimestamp(bucket, BILLING_TZ).replace(
+            hour=0, minute=0, second=0, microsecond=0).timestamp())
+        forecast_start = today - 7 * 86400
+        daily = {}
+        for row in db.execute("""
+            SELECT uuid, CAST((bucket+28800)/86400 AS INTEGER)*86400-28800 AS day,
+                   SUM(upload) AS upload, SUM(download) AS download,
+                   COUNT(*) AS samples, SUM(bucket < ?) AS finished
+            FROM verified_buckets WHERE bucket>=? AND bucket<?
+            GROUP BY day, uuid ORDER BY day, uuid
+        """, (bucket, min(first_period, forecast_start), last_end)):
+            daily.setdefault(row['uuid'], []).append(row)
+        for client in clients:
+            uuid = client['uuid']
+            start, end = periods[uuid]
+            upload = download = actual_buckets = 0
+            history = []
+            for row in daily.get(uuid, ()):
+                day = row['day']
+                if not min(start, forecast_start) <= day < end:
+                    continue
+                if day >= start:
+                    upload += row['upload']
+                    download += row['download']
+                    actual_buckets += row['finished']
+                history.append({
+                    'date': dt.datetime.fromtimestamp(day, BILLING_TZ).date().isoformat(),
+                    'timestamp': day * 1000,
+                    'out_bytes': row['upload'], 'in_bytes': row['download'],
+                    'samples': row['samples'], 'coverage_ratio': min(1, row['samples'] / 96),
+                    'complete': row['samples'] >= 96 and day < today,
+                    'is_today': day == today,
+                })
+
+            limit = client['quota']
+            mode = client['mode'] if limit > 0 else 'sum'
+            used = billable(upload, download, mode)
+            calibration = calibrations.get((uuid, start))
+            adjustment = None
+            if (calibration and calibration['mode'] == client['mode']
+                    and calibration['reset_day'] == client['reset_day']):
+                adjustment = {key: calibration[key] for key in ('amount', 'upload_anchor', 'download_anchor')}
+                used = adjustment['amount'] + billable(max(0, upload - adjustment['upload_anchor']),
+                                                       max(0, download - adjustment['download_anchor']), mode)
+            first, latest = client['first_bucket'], client['last_sample']
+            expected = max(0, (bucket - start) // BUCKET_SECONDS)
+            quota = {
+                'used_bytes': used, 'remaining_bytes': max(0, limit - used) if limit else None,
+                'limit_bytes': limit, 'upload_bytes': upload, 'download_bytes': download,
+                'billing_mode': mode, 'reset_day': client['reset_day'],
+                'period_start': iso_time(start), 'period_end': iso_time(end),
+                'usage_percent': used / limit * 100 if limit else 0,
+                'history_partial': first is None or first > start,
+                'coverage_start': iso_time(first) if first is not None else None,
+                'sample_at': iso_time(latest) if latest is not None else None,
+                'calibrated': adjustment is not None, 'calibration': adjustment,
+                'coverage_ratio': min(1, actual_buckets / expected) if expected else 1,
+            }
+            model.nodes[uuid] = {'uuid': uuid, 'name': client['name'], 'quota': quota, 'history': history}
+        return model
+
+    @staticmethod
+    def _visible(model, visible_ids):
+        return (node for uuid, node in model.nodes.items() if visible_ids is None or uuid in visible_ids)
+
+    @staticmethod
+    def _copy_quota(node):
+        quota = node['quota'].copy()
+        if quota['calibration'] is not None:
+            quota['calibration'] = quota['calibration'].copy()
+        return quota
+
     def snapshot(self, visible_ids=None, now=None):
         now = time.time() if now is None else now
-        with self.connect() as db:
-            db.execute('BEGIN')
-            last_sync = db.execute("SELECT value FROM meta WHERE key='last_sync'").fetchone()
-            if not last_sync:
-                raise RuntimeError('Initial traffic history import is still running')
-            result = {}
-            for node in db.execute('SELECT * FROM clients'):
-                uuid = node['uuid']
-                if visible_ids is not None and uuid not in visible_ids:
-                    continue
-                start, end = cycle_bounds(now, node['reset_day'])
-                upload, download = self._totals(db, uuid, start, end)
-                mode = node['mode'] if node['quota'] > 0 else 'sum'
-                used = billable(upload, download, mode)
-                calibration = db.execute('SELECT * FROM calibrations WHERE uuid=? AND period_start=?', (uuid, start)).fetchone()
-                calibrated = bool(calibration and calibration['mode'] == node['mode'] and calibration['reset_day'] == node['reset_day'])
-                if calibrated:
-                    used = calibration['amount'] + billable(max(0, upload-calibration['upload_anchor']), max(0, download-calibration['download_anchor']), mode)
-                coverage = db.execute('SELECT MIN(bucket),MAX(sample_at) FROM buckets WHERE uuid=?', (uuid,)).fetchone()
-                expected_buckets = max(0, (int(now)//BUCKET_SECONDS*BUCKET_SECONDS-start)//BUCKET_SECONDS)
-                actual_buckets = db.execute('SELECT COUNT(*) FROM buckets WHERE uuid=? AND bucket>=? AND bucket<?',
-                    (uuid,start,int(now)//BUCKET_SECONDS*BUCKET_SECONDS)).fetchone()[0]
-                quota = node['quota']
-                result[uuid] = {
-                    'used_bytes': used,
-                    'remaining_bytes': max(0, quota-used) if quota else None,
-                    'limit_bytes': quota,
-                    'upload_bytes': upload, 'download_bytes': download,
-                    'billing_mode': mode, 'reset_day': node['reset_day'],
-                    'period_start': iso_time(start), 'period_end': iso_time(end),
-                    'usage_percent': used/quota*100 if quota else 0,
-                    'history_partial': coverage[0] is None or coverage[0] > start,
-                    'coverage_start': iso_time(coverage[0]) if coverage[0] is not None else None,
-                    'sample_at': iso_time(coverage[1]) if coverage[1] is not None else None,
-                    'calibrated': calibrated,
-                    'calibration': {'amount':calibration['amount'],'upload_anchor':calibration['upload_anchor'],
-                        'download_anchor':calibration['download_anchor']} if calibrated else None,
-                    'coverage_ratio': min(1,actual_buckets/expected_buckets) if expected_buckets else 1,
-                }
-            return {'server_time': iso_time(now), 'timezone': 'Asia/Shanghai',
-                    'last_sync': iso_time(float(last_sync[0])), 'nodes': result}
+        model = self._read_at(now)
+        nodes = {node['uuid']: self._copy_quota(node) for node in self._visible(model, visible_ids)}
+        return {'server_time': iso_time(now), 'timezone': 'Asia/Shanghai',
+                'last_sync': model.last_sync, 'nodes': nodes}
 
     def forecast_input(self, visible_ids=None, now=None):
-        """Return cycle totals and history covering the cycle and recent forecast window."""
+        """Return cycle totals and history from the same committed ledger snapshot."""
         now = time.time() if now is None else now
-        local_today = dt.datetime.fromtimestamp(now, BILLING_TZ).replace(
-            hour=0, minute=0, second=0, microsecond=0,
-        )
-        forecast_start = (local_today - dt.timedelta(days=7)).timestamp()
-        for _ in range(3):
-            snapshot = self.snapshot(visible_ids, now)
-            nodes = []
-            with self.connect() as db:
-                db.execute('BEGIN')
-                last_sync = db.execute("SELECT value FROM meta WHERE key='last_sync'").fetchone()[0]
-                if iso_time(float(last_sync)) != snapshot['last_sync']:
-                    continue
-                for uuid, quota in snapshot['nodes'].items():
-                    meta = db.execute('SELECT name FROM clients WHERE uuid=?', (uuid,)).fetchone()
-                    since = min(timestamp(quota['period_start']), forecast_start)
-                    rows = db.execute('''
-                        SELECT CAST((bucket+28800)/86400 AS INTEGER)*86400-28800 AS day,
-                               SUM(upload) AS upload,SUM(download) AS download,COUNT(*) AS samples
-                        FROM verified_buckets WHERE uuid=? AND bucket>=? AND bucket<?
-                        GROUP BY day ORDER BY day
-                    ''', (uuid, since, timestamp(quota['period_end']))).fetchall()
-                    history = [{
-                        'date': dt.datetime.fromtimestamp(row['day'], BILLING_TZ).strftime('%Y-%m-%d'),
-                        'timestamp': row['day'] * 1000,
-                        'out_bytes': row['upload'], 'in_bytes': row['download'],
-                        'samples': row['samples'],
-                        'coverage_ratio': min(1,row['samples']/96),
-                        'complete': row['samples'] >= 96 and row['day']+86400 <= now,
-                        'is_today': row['day'] <= now < row['day']+86400,
-                    } for row in rows]
-                    nodes.append({'uuid': uuid, 'name': meta['name'], 'quota': quota, 'history': history})
-            return {'ok': True, 'source': 'persistent-ledger', 'generated_at': snapshot['server_time'],
-                    'last_sync': snapshot['last_sync'], 'nodes': nodes}
-        raise RuntimeError('Traffic ledger changed during forecast read; retry')
+        model = self._read_at(now)
+        nodes = [{
+            **node, 'quota': self._copy_quota(node), 'history': [day.copy() for day in node['history']],
+        } for node in self._visible(model, visible_ids)]
+        return {'ok': True, 'source': 'persistent-ledger', 'generated_at': iso_time(now),
+                'last_sync': model.last_sync, 'nodes': nodes}
