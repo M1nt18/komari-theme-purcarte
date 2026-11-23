@@ -1,0 +1,40 @@
+.monitoring-rank-dialog.nf-overview-dialog {
+  width: min(100% - 24px, 480px);
+  padding: 0;
+}
+.monitoring-rank-panel {
+  background: var(--background, #f8f7fc);
+  color: var(--foreground, #241d2f);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+.monitoring-rank-heading, .monitoring-rank-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.monitoring-rank-heading h2 { font-size: 1.2rem; font-weight: 650; }
+.monitoring-rank-heading button { width: 36px; height: 36px; font-size: 24px; }
+.monitoring-rank-metrics { display: flex; flex-wrap: wrap; gap: 6px; }
+.monitoring-rank-metrics button, .monitoring-rank-list button {
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: var(--accent-3, #ede9f6);
+  color: var(--foreground, #241d2f);
+}
+.monitoring-rank-metrics [aria-pressed="true"] {
+  color: var(--accent-11, #592da0);
+  background: var(--accent-5, #ded0fa);
+}
+.monitoring-rank-list { list-style: decimal inside; padding: 0; margin: 0; }
+.monitoring-rank-list li + li { margin-top: 6px; }
+.monitoring-rank-list button { display: inline-flex; width: calc(100% - 25px); text-align: left; }
+.monitoring-rank-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.monitoring-rank-list strong { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.monitoring-rank-panel button { cursor: pointer; }
+.monitoring-rank-panel button:focus-visible { outline: 2px solid var(--accent-9, #8760ba); }
+@media (max-width: 420px) {
+  .monitoring-rank-button.nf-home-launcher { padding-inline: 6px; flex-shrink: 0; }
+}

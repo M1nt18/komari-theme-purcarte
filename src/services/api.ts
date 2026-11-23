@@ -11,6 +11,8 @@ import type {
 import type { RpcNodeStatus, RpcNodeStatusMap } from "@/types/rpc";
 import { convertNodeStatsToRpcNodeStatus } from "../utils/converters.ts";
 import type { SiteStatus } from "@/config/default";
+import { readStartup } from "./startup.ts";
+import { historyPointLimit, readRpcLoadHistory } from "../features/monitoring/load-history.ts";
 
 class ApiService {
   private baseUrl: string;
@@ -116,16 +118,12 @@ class ApiService {
       const response = await this.rpcCall<{ [uuid: string]: NodeData }>(
         "common:getNodes"
       );
-      if (response.status === "success" && response.data) {
+      if (response.status === "success" && response.data && typeof response.data === "object") {
         return Object.values(response.data);
       }
-      return [];
+      throw new Error(response.message || "Invalid nodes response");
     }
-    const response = await this.get<NodeData[]>("/api/nodes");
-    if ("status" in response && response.status === "success") {
-      return (response as ApiResponse<NodeData[]>).data;
-    }
-    return [];
+    return readStartup<NodeData[]>("/api/nodes", Array.isArray);
   }
 
   // 获取指定节点的最近状态
@@ -151,22 +149,16 @@ class ApiService {
     uuid: string,
     hours: number = 24
   ): Promise<{ count: number; records: HistoryRecord[] } | null> {
-    if (this.useRpc) {
-      const response = await this.rpcCall<any>("common:getRecords", {
+    const maxCount = historyPointLimit(hours);
+    if (this.useRpc || maxCount !== undefined) {
+      const response = await this.rpcCall<Parameters<typeof readRpcLoadHistory>[0]>("common:getRecords", {
         uuid,
         hours,
         type: "load",
+        ...(maxCount === undefined ? {} : { maxCount }),
       });
-      if (response.status === "success" && response.data) {
-        if (response.data.records[uuid]) {
-          return {
-            count: response.data.count,
-            records: response.data.records[uuid],
-          };
-        }
-        return response.data;
-      }
-      return null;
+      const history = response.status === "success" ? readRpcLoadHistory(response.data, uuid) : null;
+      if (history) return history;
     }
     const response = await this.get<{
       count: number;
@@ -434,6 +426,7 @@ export class WebSocketService {
   }
 
   private sendUpdateRequest() {
+    if (globalThis.document?.hidden) return;
     if (this.useRpc) {
       const rpcRequest = {
         jsonrpc: "2.0",
@@ -461,20 +454,24 @@ export class WebSocketService {
   }
 
   private startStatusUpdates() {
-    if (this.statusInterval) {
-      clearInterval(this.statusInterval);
-    }
+    this.stopStatusUpdates();
+    globalThis.document?.addEventListener("visibilitychange", this.refreshOnReturn);
     this.statusInterval = setInterval(() => {
       this.sendUpdateRequest();
     }, 2000);
   }
 
   private stopStatusUpdates() {
+    globalThis.document?.removeEventListener("visibilitychange", this.refreshOnReturn);
     if (this.statusInterval) {
       clearInterval(this.statusInterval);
       this.statusInterval = null;
     }
   }
+
+  private refreshOnReturn = () => {
+    if (!globalThis.document?.hidden) this.sendUpdateRequest();
+  };
 }
 
 // 延迟 WebSocket 服务实例的创建

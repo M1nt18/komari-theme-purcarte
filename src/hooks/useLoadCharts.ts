@@ -19,46 +19,52 @@ export const useLoadCharts = (node: NodeData | null, hours: number) => {
   // Fetch historical data
   useEffect(() => {
     if (isRealtime || !node?.uuid) return;
+    let active = true;
 
     const fetchHistoricalData = async () => {
       setLoading(true);
       setError(null);
       try {
         const data = await getLoadHistory(node.uuid, hours);
+        if (!active) return;
         const records = data?.records || [];
         setHistoricalData(records);
         setIsDataEmpty(records.length === 0);
 
         setRealtimeData([]); // Clear realtime data
       } catch (err: any) {
-        setError(err.message || "Failed to fetch historical data");
+        if (active) setError(err.message || "Failed to fetch historical data");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
     fetchHistoricalData();
-  }, [node?.uuid, hours, getLoadHistory, isRealtime, isDataEmpty]);
+    return () => { active = false; };
+  }, [node?.uuid, hours, getLoadHistory, isRealtime]);
 
   // Fetch initial real-time data and handle WebSocket updates
   useEffect(() => {
     if (!isRealtime || !node?.uuid) return;
+    let active = true;
 
     const fetchInitialRealtimeData = async () => {
       setLoading(true);
       setError(null);
       try {
         const data = await getRecentLoadHistory(node.uuid);
+        if (!active) return;
         setRealtimeData(data?.records || []);
         setHistoricalData([]); // Clear historical data
       } catch (err: any) {
-        setError(err.message || "Failed to fetch initial real-time data");
+        if (active) setError(err.message || "Failed to fetch initial real-time data");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
     fetchInitialRealtimeData();
+    return () => { active = false; };
   }, [node?.uuid, getRecentLoadHistory, isRealtime]);
 
   // Separate effect for WebSocket updates

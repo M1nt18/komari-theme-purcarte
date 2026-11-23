@@ -14,6 +14,7 @@ import {
 import { forwardRef, useEffect, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import ForecastOverviewLauncher from "@/features/netforecast/ForecastOverviewLauncher";
+import RankingLauncher from "@/features/monitoring/RankingLauncher";
 import { useAppConfig } from "@/config";
 import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -347,6 +348,7 @@ export const Header = forwardRef<HTMLElement, HeaderProps>((props, ref) => {
 
           <div className="flex shrink-0 items-center space-x-2">
             {enableTrafficForecast && !isPrivate && !isInstancePage && <ForecastOverviewLauncher onOpenNode={uuid => navigate(`/instance/${uuid}#forecast`)} />}
+            {!isPrivate && !isInstancePage && <RankingLauncher onOpenNode={uuid => navigate(`/instance/${uuid}`)} />}
             {isMobile ? (
               <>
                 {!isInstancePage && (

@@ -29,6 +29,7 @@ import { CustomTooltip } from "@/components/ui/tooltip";
 import Tips from "@/components/ui/tips";
 import { generateColor, lableFormatter } from "@/utils/chartHelper";
 import { useLocale } from "@/config/hooks";
+import { formatPingMetric, pingSummary } from "@/features/monitoring/ping-summary";
 
 interface PingChartProps {
   node: NodeData;
@@ -253,6 +254,7 @@ const PingChart = memo(({ node, hours }: PingChartProps) => {
         time: latestTime,
         loss: loss,
         missing: missing,
+        summary: pingSummary(pingHistory.records, task.id, timeRange),
         color: generateColor(task.name, sortedTasks),
       };
     });
@@ -309,6 +311,12 @@ const PingChart = memo(({ node, hours }: PingChartProps) => {
                           1
                         )}% | 缺测 ${task.missing.toFixed(1)}%`}
                       </span>
+                    </div>
+                    <div className="text-xs tabular-nums" data-ping-summary
+                      title="基于选中时段的成功探测记录。抖动为延迟标准差。">
+                      P50 {formatPingMetric(task.summary.p50)} · P99 {formatPingMetric(task.summary.p99)}
+                      <br />
+                      抖动 {formatPingMetric(task.summary.jitter)} · 有效 {task.summary.count}
                     </div>
                   </div>
                 );

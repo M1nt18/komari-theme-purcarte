@@ -91,6 +91,53 @@ class LedgerTests(unittest.TestCase):
             self.ledger.sync(self.now)
             self.assertEqual(self.node()['used_bytes'], expected)
 
+    def test_lifetime_counter_replay_is_corrected_and_normal_traffic_is_kept(self):
+        gib = 2 ** 30
+        start = 429 * gib
+        self.sample('2026-11-14 03:59:00', 100, 200, raw=(start, start))
+        # The cached report may contain the lifetime total plus a small delta.
+        self.sample('2026-11-14 04:01:00', start + 2_000_000, start + 1_020_000,
+                    raw=(start + 1_000_000, start + 1_000_000))
+        self.sample('2026-11-14 04:02:00', gib, 300, raw=(start + 1_000_000 + gib, start + 1_000_300))
+        self.sample('2026-11-14 04:03:00', 300, 400, raw=(300, 400))
+        self.ledger.sync(self.now)
+        expected = gib + 2_001_300
+        self.assertEqual(self.node()['used_bytes'], expected)
+
+        self.sample('2026-11-14 04:00:00', start + 2_000_000 + gib + 300,
+                    start + 1_020_000 + 700, coarse=True)
+        self.ledger = TrafficLedger(self.source, self.state)
+        later = self.now + 1800
+        self.ledger.sync(later)
+        node = self.ledger.forecast_input({'a'}, later)['nodes'][0]
+        self.assertEqual(node['quota']['used_bytes'], expected)
+        self.assertEqual(node['history'][0]['out_bytes'] + node['history'][0]['in_bytes'], expected)
+        with self.ledger.connect() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM counter_overcounts').fetchone()[0], 1)
+
+    def test_verified_bucket_correction_survives_reaggregation(self):
+        self.sample('2026-11-14 03:01:00', 5000, 7000)
+        self.sample('2026-11-14 04:01:00', 15, 25)
+        self.ledger.sync(self.now)
+        bucket = timestamp('2026-11-14T03:00:00Z')
+        with self.ledger.connect() as db:
+            db.execute('INSERT INTO bucket_corrections VALUES(?,?,?,?,?)',
+                       ('a', bucket, 10, 20, 'verified counter error'))
+        self.assertEqual(self.node()['used_bytes'], 70)
+
+        self.sample('2026-11-14 03:00:00', 5000, 7000, coarse=True)
+        self.ledger = TrafficLedger(self.source, self.state)
+        self.ledger.sync(self.now + 15)
+        node = self.ledger.forecast_input({'a'}, self.now + 15)['nodes'][0]
+        self.assertEqual(node['quota']['used_bytes'], 70)
+        self.assertEqual(node['history'][0]['out_bytes'], 25)
+        self.assertEqual(node['history'][0]['in_bytes'], 45)
+        self.assertEqual(node['history'][0]['samples'], 2)
+        with self.ledger.connect() as db:
+            original = db.execute('SELECT upload,download,source FROM buckets WHERE uuid=? AND bucket=?',
+                                  ('a', bucket)).fetchone()
+        self.assertEqual(tuple(original), (5000, 7000, 'coarse'))
+
     def test_reset_without_new_samples_and_legacy_baseline_ignored(self):
         self.sample('2026-11-12 15:59:00', 999, 999)
         self.sample('2026-11-12 16:00:00', 10, 20)
@@ -141,6 +188,17 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual([r['out_bytes'] for r in node['history']], [10, 80])
         self.assertEqual([r['is_today'] for r in node['history']], [False, True])
         self.assertEqual(self.ledger.forecast_input(set(), self.now)['nodes'], [])
+
+    def test_forecast_on_reset_day_includes_previous_week_but_quota_starts_fresh(self):
+        previous = timestamp('2026-11-12T15:45:00Z')
+        self.sample('2026-11-12 15:45:00', 100, 200, coarse=True)
+        self.sample('2026-11-12 16:00:00', 30, 40, coarse=True)
+        today = previous + 3600
+        self.ledger.sync(today)
+        node = self.ledger.forecast_input({'a'}, today)['nodes'][0]
+        self.assertEqual(node['quota']['used_bytes'], 70)
+        self.assertEqual([row['date'] for row in node['history']], ['2026-11-12', '2026-11-13'])
+        self.assertEqual([row['out_bytes'] for row in node['history']], [100, 30])
 
 
 class CalendarTests(unittest.TestCase):

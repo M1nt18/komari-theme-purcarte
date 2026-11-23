@@ -34,10 +34,6 @@ const InstancePage = lazy(() => import("@/pages/instance"));
 const NotFoundPage = lazy(() => import("@/pages/NotFound"));
 const PrivatePage = lazy(() => import("@/pages/Private"));
 
-const homeScrollState = {
-  position: 0,
-};
-
 const AppRoutes = ({
   searchTerm,
   setSearchTerm,
@@ -85,25 +81,7 @@ const AppRoutes = ({
     onSort: handleSort,
   };
 
-  const homeViewportRef = useRef<HTMLDivElement | null>(null);
   const instanceViewportRef = useRef<HTMLDivElement | null>(null);
-
-  const handleHomeScroll = () => {
-    if (location.pathname === "/" && homeViewportRef.current) {
-      homeScrollState.position = homeViewportRef.current.scrollTop;
-    }
-  };
-
-  useEffect(() => {
-    if (location.pathname === "/") {
-      const timer = setTimeout(() => {
-        if (homeViewportRef.current) {
-          homeViewportRef.current.scrollTop = homeScrollState.position;
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [location.pathname]);
 
   useEffect(() => {
     if (!location.pathname.startsWith("/instance")) return;
@@ -177,10 +155,7 @@ const AppRoutes = ({
           inert={location.pathname !== "/"}
           style={{ display: location.pathname === "/" || location.pathname.startsWith("/instance/") ? undefined : "none" }}>
           <Suspense fallback={<Loading />}>
-                <ScrollArea
-                  className="h-full"
-                  viewportRef={homeViewportRef}
-                  viewportProps={{ onScroll: handleHomeScroll }}>
+                <div className="home-scroll h-full overflow-y-auto overflow-x-hidden" data-home-scroll>
                   <div className="flex flex-col min-h-screen">
                     <main
                       className="w-(--main-width) max-w-screen-2xl mx-auto h-full flex-grow"
@@ -210,7 +185,7 @@ const AppRoutes = ({
                       <Footer isSettingsOpen={isSettingsOpen} ref={null} />
                     )}
                   </div>
-                </ScrollArea>
+                </div>
           </Suspense>
         </div>}
       </div>

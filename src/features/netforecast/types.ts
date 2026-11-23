@@ -21,6 +21,7 @@ export interface TrafficPoint {
 
 export interface NodeForecast {
   sample_days?: number;
+  collecting_samples?: boolean;
   partial_days?: number;
   forecast_available?: boolean;
   history_partial?: boolean;

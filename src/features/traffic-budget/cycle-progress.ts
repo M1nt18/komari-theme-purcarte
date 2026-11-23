@@ -24,11 +24,13 @@ export function cycleProgress(quota: CycleInput, serverNow: number) {
   };
 }
 
+const cycleDateFormat = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit",
+});
+
 export function cycleDate(value: string) {
   const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleDateString('zh-CN', {
-    timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit',
-  }) : '—';
+  return Number.isFinite(date.getTime()) ? cycleDateFormat.format(date) : '—';
 }
 
 export function precisePercent(value: number) {

@@ -17,3 +17,8 @@
 
 /* Skip raster/layout work for cards outside the scroll viewport. */
 .node-grid-card { content-visibility: auto; contain-intrinsic-size: auto 30rem; }
+
+.home-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-6) transparent;
+}

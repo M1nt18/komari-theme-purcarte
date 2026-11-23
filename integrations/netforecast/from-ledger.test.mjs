@@ -62,3 +62,29 @@ test('reset boundary invalidates an otherwise fresh forecast and last cycle day 
   assert.equal(forecast.nodes[0].cycle.daysRemaining,1);
   assert.ok(forecast.nodes[0].projected.billable_bytes>forecast.nodes[0].cumulative.billable_bytes);
 });
+
+test('new cycle uses last week of history without adding prior-cycle usage to the chart', () => {
+  const value = input('sum');
+  value.generated_at = value.last_sync = '2026-11-13T04:00:00Z';
+  const node = value.nodes[0];
+  node.quota.coverage_start = '2026-10-01T00:00:00Z';
+  node.quota.used_bytes = 0;
+  node.quota.upload_bytes = node.quota.download_bytes = 0;
+  node.history = Array.from({ length: 7 }, (_, index) => ({
+    date: `2026-11-${String(index + 6).padStart(2, '0')}`,
+    timestamp: Date.parse('2026-11-05T16:00:00Z') + index * 86400000,
+    in_bytes: index === 0 ? 10000 : 100,
+    out_bytes: 0,
+    samples: index === 0 ? 95 : 96,
+  }));
+  const forecast = adaptForecastPayload(value).nodes[0];
+  assert.equal(forecast.sample_days, 6);
+  assert.equal(forecast.collecting_samples, false);
+  assert.equal(forecast.daily_avg.billable_bytes, 100);
+  assert.equal(forecast.cumulative.billable_bytes, 0);
+  assert.ok(forecast.projected.billable_bytes > 0);
+  assert.equal(forecast.chart_series[0].date, '2026-11-13');
+
+  node.quota.coverage_start = '2026-11-07T08:00:00Z';
+  assert.equal(adaptForecastPayload(value).nodes[0].collecting_samples, true);
+});

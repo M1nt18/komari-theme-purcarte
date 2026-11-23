@@ -50,7 +50,7 @@ export const defaultTexts = {
     noDetailsAvailable: "未启用详细信息与延迟图表",
     errorFetchingNodes: "获取节点数据失败",
     noNodes: "暂无节点数据",
-    retryFetchingNodes: "获取节点数据失败，请重试",
+    retryFetchingNodes: "节点列表暂时无法加载，请重试",
     addNodesInAdmin: "请先通过管理端添加节点",
     addNode: "添加节点",
   },

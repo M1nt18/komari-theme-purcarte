@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState, useMemo, useCallback } from "react";
+import { type ReactNode, useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { normalizeSettings } from './settings-model';
 import type { PublicInfo } from "@/types/node.d";
 import { ConfigContext } from "./ConfigContext";
@@ -7,6 +7,11 @@ import { apiService, getWsService } from "@/services/api";
 import Loading from "@/components/loading";
 import { defaultTexts, otherTexts } from "./locales";
 import { mergeTexts, deepMerge } from "@/utils/localeUtils";
+import { readStartup } from "@/services/startup";
+
+const isPublicInfo = (value: unknown): value is PublicInfo =>
+  Boolean(value && typeof value === "object" && "private_site" in value &&
+    typeof value.private_site === "boolean");
 
 // 配置提供者属性类型
 interface ConfigProviderProps {
@@ -22,36 +27,41 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
   const [siteStatus, setSiteStatus] = useState<SiteStatus>("public");
   const [previewConfig, setPreviewConfig] =
     useState<Partial<ConfigOptions> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [configFailed, setConfigFailed] = useState(false);
+  const requestId = useRef(0);
 
   const loadConfig = useCallback(async () => {
+    const request = ++requestId.current;
+    setConfigFailed(false);
+    const identity = apiService.getUserInfo();
     try {
-      const { status, publicInfo } = await apiService.checkSiteStatus();
-      setSiteStatus(status);
-      setPublicSettings(publicInfo);
-
-      let mergedConfig: ConfigOptions;
-      if (publicInfo) {
-        const themeSettings = normalizeSettings(publicInfo.theme_settings);
-        mergedConfig = {
-          ...DEFAULT_CONFIG,
-          ...themeSettings,
-          titleText:
-            themeSettings.titleText ||
-            publicInfo.sitename ||
-            DEFAULT_CONFIG.titleText,
-        };
-      } else {
-        mergedConfig = DEFAULT_CONFIG;
+      const publicInfo = await readStartup("/api/public", isPublicInfo);
+      if (request !== requestId.current) return;
+      const themeSettings = normalizeSettings(publicInfo.theme_settings);
+      const mergedConfig = {
+        ...DEFAULT_CONFIG,
+        ...themeSettings,
+        titleText: themeSettings.titleText || publicInfo.sitename || DEFAULT_CONFIG.titleText,
+      };
+      const applyIdentity = (loggedIn: boolean) => {
+        if (request !== requestId.current) return;
+        setSiteStatus(publicInfo.private_site
+          ? (loggedIn ? "private-authenticated" : "private-unauthenticated")
+          : (loggedIn ? "authenticated" : "public"));
+      };
+      if (publicInfo.private_site) applyIdentity(Boolean((await identity)?.logged_in));
+      else {
+        applyIdentity(false);
+        void identity.then(user => applyIdentity(Boolean(user?.logged_in)));
       }
-      setConfig(mergedConfig);
+      if (request !== requestId.current) return;
       apiService.useRpc = false;
       getWsService().useRpc = false;
 
       // Initialize RPC
       if (mergedConfig.enableJsonRPC2Api) {
         const versionInfo = await apiService.getVersion();
+        if (request !== requestId.current) return;
         if (versionInfo && versionInfo.version) {
           const match = versionInfo.version.match(/(\d+)\.(\d+)\.(\d+)/);
           if (match) {
@@ -68,13 +78,11 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
           }
         }
       }
+      setPublicSettings(publicInfo);
+      setConfig(mergedConfig);
     } catch (error) {
       console.error("Failed to initialize site:", error);
-      setConfig(DEFAULT_CONFIG);
-      setSiteStatus("private-unauthenticated");
-    } finally {
-      setLoading(false);
-      setTimeout(() => setIsLoaded(true), 300);
+      if (request === requestId.current) setConfigFailed(true);
     }
   }, []);
 
@@ -108,9 +116,14 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
     [config, previewConfig]
   );
 
-  if (!isLoaded || !config) {
+  if (!config) {
     return (
-      <Loading text="加载配置中..." className={!loading ? "fade-out" : ""} />
+      configFailed
+        ? <div className="grid min-h-dvh place-content-center gap-3 text-center" role="alert">
+            <p>暂时无法连接监控服务</p>
+            <button type="button" className="rounded border px-3 py-2" onClick={() => void loadConfig()}>重试</button>
+          </div>
+        : <Loading text="加载配置中..." />
     );
   }
 

@@ -15,6 +15,10 @@ export function adaptForecastPayload(payload) {
     cycle.daysRemaining = Math.max(0, Math.ceil((end-now)/DAY));
     const recent = history.filter(h => h.timestamp >= today-7*DAY && h.timestamp < today);
     const complete = recent.filter(h => h.complete === true || (h.complete === undefined && h.samples >= 96));
+    const firstSample = Date.parse(q.coverage_start);
+    const collectingSamples = Number.isFinite(firstSample)
+      ? now - firstSample < 7 * DAY
+      : complete.length < 7;
     const weighted = field => {
       if (!complete.length) return NaN;
       let sum=0,weights=0;
@@ -66,6 +70,7 @@ export function adaptForecastPayload(payload) {
       projected:{in_bytes:q.download_bytes+avgIn*remaining,out_bytes:q.upload_bytes+avgOut*remaining,billable_bytes:predicted},
       usage_ratio:ratio,status,days_until_exhaustion:exhaustion,chart_series:chart,
       sample_days:complete.length,partial_days:recent.length-complete.length,forecast_available:available,
+      collecting_samples:collectingSamples,
       history_partial:q.history_partial||q.coverage_ratio<.95,fetch_failed:!q.sample_at};
   });
   return {ok:true,generated_at:payload.generated_at,last_sync:payload.last_sync,

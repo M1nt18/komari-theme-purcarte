@@ -11,6 +11,7 @@ from contextlib import contextmanager
 UTC = dt.timezone.utc
 BILLING_TZ = dt.timezone(dt.timedelta(hours=8))
 BUCKET_SECONDS = 15 * 60
+COUNTER_OVERCOUNT_MIN = 64 * 1024 ** 2
 
 
 def timestamp(value):
@@ -63,6 +64,18 @@ def nonnegative(value):
     return int(number)
 
 
+def counter_overcount(reported, previous, current):
+    """Identify a lifetime total mistakenly included in a short interval delta."""
+    if previous is None or current is None or not 0 < previous <= current:
+        return 0
+    increase = current - previous
+    excess = reported - increase
+    if (excess >= COUNTER_OVERCOUNT_MIN and
+            reported * 10 >= current * 9 and reported >= 32 * max(increase, 1)):
+        return excess
+    return 0
+
+
 class TrafficLedger:
     def __init__(self, source_path, state_path):
         self.source_path = Path(source_path).resolve()
@@ -97,6 +110,36 @@ class TrafficLedger:
                     PRIMARY KEY(uuid, period_start)
                 );
                 CREATE INDEX IF NOT EXISTS buckets_time ON buckets(bucket);
+                CREATE TABLE IF NOT EXISTS bucket_corrections (
+                    uuid TEXT NOT NULL, bucket INTEGER NOT NULL,
+                    upload INTEGER NOT NULL CHECK(upload >= 0),
+                    download INTEGER NOT NULL CHECK(download >= 0),
+                    reason TEXT NOT NULL,
+                    PRIMARY KEY(uuid, bucket)
+                );
+                CREATE VIEW IF NOT EXISTS effective_buckets AS
+                    SELECT b.uuid, b.bucket,
+                           COALESCE(c.upload, b.upload) AS upload,
+                           COALESCE(c.download, b.download) AS download
+                    FROM buckets b
+                    LEFT JOIN bucket_corrections c ON c.uuid=b.uuid AND c.bucket=b.bucket;
+                CREATE TABLE IF NOT EXISTS counter_overcounts (
+                    uuid TEXT NOT NULL, bucket INTEGER NOT NULL, sample_time TEXT NOT NULL,
+                    upload INTEGER NOT NULL CHECK(upload >= 0),
+                    download INTEGER NOT NULL CHECK(download >= 0),
+                    PRIMARY KEY(uuid, bucket, sample_time)
+                );
+                CREATE INDEX IF NOT EXISTS counter_overcounts_time ON counter_overcounts(bucket);
+                CREATE VIEW IF NOT EXISTS verified_buckets AS
+                    SELECT b.uuid, b.bucket,
+                           COALESCE(c.upload, MAX(0, b.upload - COALESCE(
+                               (SELECT SUM(d.upload) FROM counter_overcounts d
+                                WHERE d.uuid=b.uuid AND d.bucket=b.bucket), 0))) AS upload,
+                           COALESCE(c.download, MAX(0, b.download - COALESCE(
+                               (SELECT SUM(d.download) FROM counter_overcounts d
+                                WHERE d.uuid=b.uuid AND d.bucket=b.bucket), 0))) AS download
+                    FROM buckets b
+                    LEFT JOIN bucket_corrections c ON c.uuid=b.uuid AND c.bucket=b.bucket;
             """)
 
     @contextmanager
@@ -123,6 +166,11 @@ class TrafficLedger:
                 window = 86400 if broad else 3600
                 coarse_since = max(now - 62 * 86400, min(last_sync - window, now - window))
                 fine_since = max(now - 62 * 86400, min(last_sync - 1800, now - 1800))
+                counter_guard_active = state.execute(
+                    "SELECT 1 FROM meta WHERE key='counter_guard_active'"
+                ).fetchone()
+                if not counter_guard_active:
+                    fine_since = min(fine_since, now - 5 * 3600)
                 cursor = state.execute("SELECT value FROM meta WHERE key='coarse_rowid'").fetchone()
                 coarse_rowid = int(cursor[0]) if cursor else 0
                 nodes = source.execute("""
@@ -148,19 +196,43 @@ class TrafficLedger:
                                      'coarse', bucket + BUCKET_SECONDS)
 
                 touched = set()
+                has_counters = {'net_total_up', 'net_total_down'}.issubset(
+                    column[1] for column in source.execute('PRAGMA table_info(records)')
+                )
+                counters = ',net_total_up,net_total_down' if has_counters else ''
+                previous_samples = {}
                 for row in source.execute("""
-                    SELECT client,time,traffic_up,traffic_down FROM records
+                    SELECT client,time,traffic_up,traffic_down{counters} FROM records
                     WHERE time>=? AND time<=? ORDER BY time,rowid
-                """, (sql_time(fine_since), sql_time(now))):
+                """.format(counters=counters), (sql_time(fine_since), sql_time(now))):
                     observed = timestamp(row['time'])
                     bucket = int(observed // BUCKET_SECONDS) * BUCKET_SECONDS
+                    upload = nonnegative(row['traffic_up'])
+                    download = nonnegative(row['traffic_down'])
+                    if has_counters:
+                        uuid = row['client']
+                        if uuid not in previous_samples:
+                            previous_samples[uuid] = source.execute("""
+                                SELECT time,net_total_up,net_total_down FROM records
+                                WHERE client=? AND time>=? AND time<?
+                                ORDER BY time DESC,rowid DESC LIMIT 1
+                            """, (uuid, sql_time(fine_since - BUCKET_SECONDS),
+                                  sql_time(fine_since))).fetchone()
+                        previous = previous_samples[uuid]
+                        if previous and 0 < observed - timestamp(previous['time']) <= BUCKET_SECONDS:
+                            excess_up = counter_overcount(upload, previous['net_total_up'], row['net_total_up'])
+                            excess_down = counter_overcount(download, previous['net_total_down'], row['net_total_down'])
+                            self._record_counter_overcount(
+                                state, uuid, bucket, row['time'], excess_up, excess_down,
+                            )
+                        previous_samples[uuid] = row
                     state.execute("""
                         INSERT INTO observations VALUES(?,?,?,?,?)
                         ON CONFLICT(uuid,sample_time) DO UPDATE SET
                           upload=excluded.upload,download=excluded.download
                         WHERE observations.upload!=excluded.upload OR observations.download!=excluded.download
                     """, (row['client'], row['time'], bucket,
-                          nonnegative(row['traffic_up']), nonnegative(row['traffic_down'])))
+                          upload, download))
                     touched.add((row['client'], bucket))
                 for uuid, bucket in touched:
                     coarse = state.execute("SELECT source FROM buckets WHERE uuid=? AND bucket=?", (uuid, bucket)).fetchone()
@@ -201,13 +273,28 @@ class TrafficLedger:
                     state.execute('DELETE FROM clients WHERE uuid=?', (uuid,))
                 state.execute('DELETE FROM observations WHERE bucket<?', (now - 2 * 86400,))
                 state.execute('DELETE FROM buckets WHERE bucket<?', (now - 400 * 86400,))
+                state.execute('DELETE FROM counter_overcounts WHERE bucket<?', (now - 400 * 86400,))
                 state.execute('DELETE FROM calibrations WHERE period_start<?', (now - 400 * 86400,))
                 state.execute("INSERT OR REPLACE INTO meta VALUES('last_sync',?)", (str(now),))
                 state.execute("INSERT OR REPLACE INTO meta VALUES('coarse_rowid',?)",(str(coarse_rowid),))
+                if not counter_guard_active:
+                    state.execute("INSERT INTO meta VALUES('counter_guard_active','1')")
                 if broad:state.execute("INSERT OR REPLACE INTO meta VALUES('last_reconcile',?)",(str(now),))
                 return len(nodes)
         finally:
             source.close()
+
+    @staticmethod
+    def _record_counter_overcount(db, uuid, bucket, sample_time, upload, download):
+        if upload or download:
+            db.execute("""
+                INSERT INTO counter_overcounts VALUES(?,?,?,?,?)
+                ON CONFLICT(uuid,bucket,sample_time) DO UPDATE SET upload=excluded.upload,download=excluded.download
+                WHERE counter_overcounts.upload!=excluded.upload OR counter_overcounts.download!=excluded.download
+            """, (uuid, bucket, sample_time, upload, download))
+        else:
+            db.execute('DELETE FROM counter_overcounts WHERE uuid=? AND bucket=? AND sample_time=?',
+                       (uuid, bucket, sample_time))
 
     @staticmethod
     def _put_bucket(db, uuid, bucket, upload, download, source, sample_at):
@@ -225,7 +312,7 @@ class TrafficLedger:
     def _totals(db, uuid, start, end):
         row = db.execute("""
             SELECT COALESCE(SUM(upload),0),COALESCE(SUM(download),0)
-            FROM buckets WHERE uuid=? AND bucket>=? AND bucket<?
+            FROM verified_buckets WHERE uuid=? AND bucket>=? AND bucket<?
         """, (uuid, start, end)).fetchone()
         return row[0], row[1]
 
@@ -274,8 +361,12 @@ class TrafficLedger:
                     'last_sync': iso_time(float(last_sync[0])), 'nodes': result}
 
     def forecast_input(self, visible_ids=None, now=None):
-        """Return the canonical quota snapshot and daily deltas from the same sync."""
+        """Return cycle totals and history covering the cycle and recent forecast window."""
         now = time.time() if now is None else now
+        local_today = dt.datetime.fromtimestamp(now, BILLING_TZ).replace(
+            hour=0, minute=0, second=0, microsecond=0,
+        )
+        forecast_start = (local_today - dt.timedelta(days=7)).timestamp()
         for _ in range(3):
             snapshot = self.snapshot(visible_ids, now)
             nodes = []
@@ -286,11 +377,11 @@ class TrafficLedger:
                     continue
                 for uuid, quota in snapshot['nodes'].items():
                     meta = db.execute('SELECT name FROM clients WHERE uuid=?', (uuid,)).fetchone()
-                    since = timestamp(quota['period_start'])
+                    since = min(timestamp(quota['period_start']), forecast_start)
                     rows = db.execute('''
                         SELECT CAST((bucket+28800)/86400 AS INTEGER)*86400-28800 AS day,
                                SUM(upload) AS upload,SUM(download) AS download,COUNT(*) AS samples
-                        FROM buckets WHERE uuid=? AND bucket>=? AND bucket<?
+                        FROM verified_buckets WHERE uuid=? AND bucket>=? AND bucket<?
                         GROUP BY day ORDER BY day
                     ''', (uuid, since, timestamp(quota['period_end']))).fetchall()
                     history = [{

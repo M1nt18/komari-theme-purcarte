@@ -42,7 +42,8 @@ export function forecastState(node: NodeForecast): ForecastState {
   if (!node.has_quota) return "unlimited";
   if (node.cumulative.billable_bytes >= node.traffic_limit_bytes)
     return "critical";
-  if (sampleDays(node) < 7) return "collecting";
+  if (node.collecting_samples ?? (sampleDays(node) < 7)) return "collecting";
+  if (node.forecast_available === false) return "error";
   return {
     CRITICAL: "critical",
     WARNING: "warning",

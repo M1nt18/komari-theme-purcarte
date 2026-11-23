@@ -88,7 +88,7 @@ const HomePage: React.FC<HomePageProps> = ({
 
   return (
     <div className="fade-in my-4">
-      {enableStatsBar && (!isShowStatsInHeader || isMobile) && (
+      {enableStatsBar && (!error || filteredNodes.length > 0) && (!isShowStatsInHeader || isMobile) && (
         <StatsBar
           displayOptions={statusCardsVisibility}
           setDisplayOptions={setStatusCardsVisibility}

@@ -15,7 +15,7 @@ export function createTrafficStore(env = globalThis) {
   const emit = () => { revision++; for (const callback of listeners) callback(); };
   const availability = () => Object.keys(data?.nodes || {}).filter(id => current(id)).sort().join(',');
   async function refresh() {
-    if (pending) return;
+    if (pending || env.document?.hidden) return;
     pending = true;
     lastAttempt = clock();
     const controller = new AbortController();
@@ -42,6 +42,7 @@ export function createTrafficStore(env = globalThis) {
     }
   }
   const tick = () => {
+    if (env.document?.hidden) return;
     const next = availability();
     if (next !== available) {
       available = next;
@@ -49,7 +50,7 @@ export function createTrafficStore(env = globalThis) {
       void refresh();
     } else if (clock() - lastAttempt >= 15000) void refresh();
   };
-  const resume = () => { tick(); void refresh(); };
+  const resume = () => { if (!env.document?.hidden) { tick(); void refresh(); } };
   return {
     get: current,
     getServerTime: serverNow,
@@ -75,9 +76,15 @@ export function createTrafficStore(env = globalThis) {
 
 export const trafficStore = createTrafficStore();
 
+const quotaResetFormat = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric', month: 'numeric', day: 'numeric',
+  hour: 'numeric', minute: 'numeric', second: 'numeric',
+});
+
 export function quotaTitle(node) {
   if (!node) return '流量账本待同步';
-  const reset = new Date(node.period_end).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+  const reset = quotaResetFormat.format(new Date(node.period_end));
   return `本周期已用 / 配额；下次重置：${reset}（北京时间）`
     + (node.history_partial ? '；早期历史不完整，当前按现有采样累计' : '');
 }

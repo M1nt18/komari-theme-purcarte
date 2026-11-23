@@ -11,6 +11,11 @@ import { useLocale, useAppConfig } from "@/config/hooks";
 
 type SortKey = "trafficUp" | "trafficDown" | "speedUp" | "speedDown" | null;
 type SortOrder = "asc" | "desc";
+const expirationDateFormat = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 
 export const useNodeListCommons = (searchTerm: string) => {
   const {
@@ -211,11 +216,7 @@ export const useNodeCommons = (node: NodeData & { stats?: any }) => {
     daysLeft !== null && daysLeft > 36500
       ? t("node.longTerm")
       : node.expired_at && new Date(node.expired_at).getTime() > 0
-      ? new Date(node.expired_at).toLocaleDateString(undefined, {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        })
+      ? expirationDateFormat.format(new Date(node.expired_at))
       : t("node.notSet");
 
   const tagList = [

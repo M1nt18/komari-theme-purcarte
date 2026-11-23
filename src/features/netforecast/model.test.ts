@@ -61,6 +61,8 @@ test("insufficient history is identified while an already exhausted quota stays 
   const sparse = { ...node, chart_series: [day, { ...day, is_today: true }] };
   assert.equal(sampleDays(sparse), 1);
   assert.equal(forecastState(sparse), "collecting");
+  assert.equal(forecastState({ ...sparse, collecting_samples: false, forecast_available: true }), "critical");
+  assert.equal(forecastState({ ...sparse, collecting_samples: false, forecast_available: false }), "error");
   assert.equal(
     forecastState({
       ...sparse,
