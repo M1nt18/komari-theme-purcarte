@@ -307,6 +307,7 @@ export const Header = forwardRef<HTMLElement, HeaderProps>((props, ref) => {
     siteStatus,
     isShowConfigEditButtonInLogined,
     enableTrafficForecast,
+    enableRankingButton,
   } = useAppConfig();
   const isMobile = useIsMobile();
 
@@ -348,7 +349,7 @@ export const Header = forwardRef<HTMLElement, HeaderProps>((props, ref) => {
 
           <div className="flex shrink-0 items-center space-x-2">
             {enableTrafficForecast && !isPrivate && !isInstancePage && <ForecastOverviewLauncher onOpenNode={uuid => navigate(`/instance/${uuid}#forecast`)} />}
-            {!isPrivate && !isInstancePage && <RankingLauncher onOpenNode={uuid => navigate(`/instance/${uuid}`)} />}
+            {enableRankingButton && !isPrivate && !isInstancePage && <RankingLauncher onOpenNode={uuid => navigate(`/instance/${uuid}`)} />}
             {isMobile ? (
               <>
                 {!isInstancePage && (

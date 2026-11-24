@@ -3,6 +3,16 @@ import { useAppConfig } from "@/config/hooks";
 import { useIsMobile } from "@/hooks/useMobile";
 import { useTheme } from "@/hooks/useTheme";
 
+function mediaUrl(value: string) {
+  if (!value) return "";
+  try {
+    const url = new URL(value, document.baseURI);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 export function DynamicContent({ children }: { children: ReactNode }) {
   const config = useAppConfig();
   const isMobile = useIsMobile();
@@ -12,10 +22,7 @@ export function DynamicContent({ children }: { children: ReactNode }) {
     (urls: string) => {
       if (!urls) return "";
       const urlList = urls.split("|").map((u) => u.trim());
-      if (urlList.length > 1) {
-        return appearance === "dark" ? urlList[1] : urlList[0];
-      }
-      return urlList[0];
+      return mediaUrl(urlList.length > 1 && appearance === "dark" ? urlList[1] : urlList[0]);
     },
     [appearance]
   );
@@ -36,27 +43,22 @@ export function DynamicContent({ children }: { children: ReactNode }) {
       : getUrlFromConfig(videoBackgroundUrl);
   }, [config, isMobile, getUrlFromConfig]);
 
-  const dynamicStyles = useMemo(() => {
-    if (!config) return "";
-    const { mainWidth, blurValue, blurBackgroundColor } = config;
-    const styles: string[] = [];
-
-    styles.push(`--main-width: ${mainWidth}vw;`);
-    styles.push(`--body-background-url: url(${imageUrl});`);
-    styles.push(`--purcarte-blur: ${config.enableBlur?blurValue:0}px;`);
-    styles.push(`--wide-main-width: calc(${Math.min(100,mainWidth+5)}vw - var(--active-settings-width, 0px));`);
-
-    const colors = blurBackgroundColor.split("|").map((color) => color.trim());
-    if (colors.length >= 2) {
-      styles.push(`--card-light: ${colors[0]};`);
-      styles.push(`--card-dark: ${colors[1]};`);
-    } else if (colors.length === 1) {
-      styles.push(`--card-light: ${colors[0]};`);
-      styles.push(`--card-dark: ${colors[0]};`);
+  const { mainWidth, blurValue, blurBackgroundColor, enableBlur } = config;
+  useEffect(() => {
+    const styles = document.documentElement.style;
+    const [light, dark = light] = blurBackgroundColor.split("|").map(color => color.trim());
+    styles.setProperty("--purcarte-blur", `${enableBlur ? blurValue : 0}px`);
+    styles.setProperty("--wide-main-width", `calc(${Math.min(100, mainWidth + 5)}vw - var(--active-settings-width, 0px))`);
+    for (const [name, color] of [["--card-light", light], ["--card-dark", dark]]) {
+      if (CSS.supports("color", color)) styles.setProperty(name, color);
+      else styles.removeProperty(name);
     }
-
-    return `:root { ${styles.join(" ")} }`;
-  }, [config, imageUrl]);
+    return () => {
+      for (const name of ["--purcarte-blur", "--wide-main-width", "--card-light", "--card-dark"]) {
+        styles.removeProperty(name);
+      }
+    };
+  }, [mainWidth, blurValue, blurBackgroundColor, enableBlur]);
 
   useEffect(() => {
     const imageBackground = document.getElementById("image-background");
@@ -68,7 +70,7 @@ export function DynamicContent({ children }: { children: ReactNode }) {
       .map((s) => s.trim());
 
     if (imageBackground) {
-      imageBackground.style.backgroundImage = `url(${imageUrl})`;
+      imageBackground.style.backgroundImage = imageUrl ? `url(${JSON.stringify(imageUrl)})` : "";
       imageBackground.style.backgroundSize = size;
       imageBackground.style.backgroundPosition = position;
     }
@@ -90,10 +92,5 @@ export function DynamicContent({ children }: { children: ReactNode }) {
     config.enableVideoBackground,
   ]);
 
-  return (
-    <>
-      <style>{dynamicStyles}</style>
-      <div className="fade-in">{children}</div>
-    </>
-  );
+  return <div className="fade-in">{children}</div>;
 }

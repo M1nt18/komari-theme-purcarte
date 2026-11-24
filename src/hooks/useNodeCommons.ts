@@ -171,14 +171,17 @@ export const useNodeCommons = (node: NodeData & { stats?: any }) => {
     const time = Date.parse(node.expired_at ?? "");
     return time > 0 ? { time, date: expirationDateFormat.format(time) } : null;
   }, [node.expired_at]);
-  const daysLeft = expiration ? Math.ceil((expiration.time - Date.now()) / 86_400_000) : null;
+  const remainingMs = expiration ? expiration.time - Date.now() : null;
+  const daysLeft = remainingMs === null ? null : Math.ceil(remainingMs / 86_400_000);
+  const expired = remainingMs !== null && remainingMs <= 0;
+  const longTerm = daysLeft !== null && daysLeft >= 36500;
 
   let daysLeftTag = null;
   let daysLeftText: string | null = null;
   let daysLeftColor: "red" | "orange" | "green" = "green";
   if (daysLeft !== null) {
     const localizedDaysLeftText = t("node.daysLeft", { daysLeft: daysLeft });
-    if (daysLeft < 0) {
+    if (expired) {
       daysLeftTag = `${t("node.expired")}<red>`;
       daysLeftText = t("node.expired");
       daysLeftColor = "red";
@@ -190,7 +193,7 @@ export const useNodeCommons = (node: NodeData & { stats?: any }) => {
       daysLeftTag = `${localizedDaysLeftText}<orange>`;
       daysLeftText = localizedDaysLeftText;
       daysLeftColor = "orange";
-    } else if (daysLeft < 36500) {
+    } else if (!longTerm) {
       daysLeftTag = `${localizedDaysLeftText}<green>`;
       daysLeftText = localizedDaysLeftText;
       daysLeftColor = "green";
@@ -202,7 +205,7 @@ export const useNodeCommons = (node: NodeData & { stats?: any }) => {
   }
 
   const expired_at =
-    daysLeft !== null && daysLeft > 36500
+    longTerm
       ? t("node.longTerm")
       : expiration?.date ?? t("node.notSet");
 

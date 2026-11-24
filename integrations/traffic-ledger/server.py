@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import queue
+import socket
 import threading
 import time
 import urllib.error
@@ -92,19 +93,28 @@ class CoreClient:
 
 
 class BoundedHTTPServer(ThreadingHTTPServer):
+    busy_response = (b'HTTP/1.1 503 Service Unavailable\r\nRetry-After: 1\r\n'
+                     b'Connection: close\r\nContent-Length: 0\r\nCache-Control: no-store\r\n\r\n')
+    busy_timeout = 0.25
+    busy_drain_limit = 300000 + 8192
+
     def __init__(self, address, handler, max_workers=32):
         self.slots = threading.BoundedSemaphore(max_workers)
+        self.rejectors = threading.BoundedSemaphore(8)
         super().__init__(address, handler)
 
     def process_request(self, request, client_address):
         if not self.slots.acquire(blocking=False):
-            try:
-                request.setblocking(False)
-                request.sendall(b'HTTP/1.0 503 Service Unavailable\r\nRetry-After: 1\r\nContent-Length: 0\r\n\r\n')
-            except OSError:
-                pass
-            finally:
-                self.shutdown_request(request)
+            # A slow rejected connection must not block the accept loop or
+            # create an unbounded number of threads under sustained overload.
+            if self.rejectors.acquire(blocking=False):
+                try:
+                    threading.Thread(target=self.reject_request, args=(request,), daemon=True).start()
+                except BaseException:
+                    self.rejectors.release()
+                    raise
+            else:
+                self.send_busy(request, timeout=0)
             return
         try:
             super().process_request(request, client_address)
@@ -118,6 +128,36 @@ class BoundedHTTPServer(ThreadingHTTPServer):
         finally:
             self.slots.release()
 
+    def reject_request(self, request):
+        try:
+            self.send_busy(request, timeout=self.busy_timeout)
+        finally:
+            self.rejectors.release()
+
+    def send_busy(self, request, *, timeout):
+        deadline = time.monotonic() + timeout
+        try:
+            request.settimeout(timeout)
+            request.sendall(self.busy_response)
+            request.shutdown(socket.SHUT_WR)
+            # Unread request bytes can turn close() into a TCP reset and
+            # discard the response. Bound both total drain time and bytes.
+            remaining = self.busy_drain_limit if timeout else 8192
+            while remaining:
+                left = deadline - time.monotonic()
+                if timeout and left <= 0:
+                    break
+                if timeout:
+                    request.settimeout(left)
+                data = request.recv(min(65536, remaining))
+                if not data:
+                    break
+                remaining -= len(data)
+        except OSError:
+            pass
+        finally:
+            self.shutdown_request(request)
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -128,8 +168,9 @@ def main():
     parser.add_argument('--public-origin', default=os.environ.get('KOMARI_PUBLIC_ORIGIN',''))
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
-    if not args.public_origin:
-        logging.warning('Browser probe requests with Origin will be rejected. Set --public-origin or KOMARI_PUBLIC_ORIGIN to the public HTTPS origin.')
+    public_origin = args.public_origin.rstrip('/')
+    if not public_origin:
+        logging.warning('Browser probes require --public-origin or KOMARI_PUBLIC_ORIGIN to be set to the public HTTPS origin.')
     core = CoreClient(args.core)
     ledger = TrafficLedger(args.source, args.state)
     unlock = UnlockService(args.source, Path(args.state).parent / 'unlock.sqlite')
@@ -206,10 +247,10 @@ def main():
                 data = json.loads(self.rfile.read(size))
                 if not isinstance(data,dict):raise UnlockError(400,'请求格式无效')
                 if path.endswith('/probe'):
-                    origin = self.headers.get('Origin')
-                    if origin and origin != args.public_origin.rstrip('/'):
+                    origins = self.headers.get_all('Origin')
+                    fetch_site = self.headers.get('Sec-Fetch-Site')
+                    if not public_origin or origins != [public_origin] or fetch_site in ('cross-site', 'same-site'):
                         raise UnlockError(403,'请求来源无效')
-                    if self.headers.get('Sec-Fetch-Site') == 'cross-site':raise UnlockError(403,'请求来源无效')
                     headers = self.auth_headers()
                     me = core.get('/api/me', headers)
                     if not me.get('logged_in'):raise UnlockError(403,'请以管理员身份登录后检测')
@@ -231,6 +272,12 @@ def main():
                 self.send_json(200,{'status':'success','data':result})
             except UnlockError as error:
                 self.send_json(error.status,{'status':'error','message':error.message,'code':error.code})
+            except urllib.error.HTTPError as error:
+                if error.code in (401, 403):
+                    self.send_json(error.code, {'status': 'error', 'message': '请以管理员身份登录后检测'})
+                else:
+                    logging.warning('Core rejected unlock request with HTTP %s', error.code)
+                    self.send_json(503, {'status': 'error', 'message': '检测服务暂不可用'})
             except (ValueError,UnicodeDecodeError):
                 self.send_json(400,{'status':'error','message':'请求格式无效'})
             except Exception:

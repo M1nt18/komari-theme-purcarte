@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {DEFAULT_CONFIG} from './default.ts';
 import {normalizeSettings,settingsSignature} from './settings-model.ts';
-import {nodeTaskName} from './node-tasks.ts';
+import {nodeTaskName, selectCardPingTasks} from './node-tasks.ts';
 
 test('every displayed setting has a matching runtime default, correct type and unique category',()=>{
   const data=JSON.parse(fs.readFileSync(new URL('../../komari-theme.json',import.meta.url),'utf8')).configuration.data;
@@ -27,7 +27,15 @@ test('configuration imports reject invalid types, ranges and enum values',()=>{
 });
 test('draft comparisons ignore key order and task overrides fall back deterministically',()=>{
   assert.equal(settingsSignature({enableBlur:true,mainWidth:85}),settingsSignature({mainWidth:85,enableBlur:true}));
-  assert.equal(nodeTaskName('{"node":"Peer"}','node','电信'),'Peer');
-  assert.equal(nodeTaskName('invalid','node','移动'),'移动');
-  assert.equal(nodeTaskName('{}','node',''),'电信');
+});
+test('ping task overrides and defaults preserve the two card layouts',()=>{
+  assert.equal(nodeTaskName('{"node":"Peer"}','node','电信',''),'Peer');
+  assert.equal(nodeTaskName('invalid','node','移动','电信'),'移动');
+  assert.equal(nodeTaskName('{}','node','','电信'),'电信');
+  assert.equal(nodeTaskName('{}','node','',''),'');
+  const tasks = [{ id: 2, name: '海南移动', interval: 60 }, { id: 1, name: '海南电信', interval: 60 }];
+  assert.deepEqual(selectCardPingTasks(tasks, '', 1), tasks);
+  assert.deepEqual(selectCardPingTasks(tasks, '电信', 2), [tasks[1]]);
+  assert.deepEqual(selectCardPingTasks(tasks, '海南移动', 1), [tasks[0]]);
+  assert.deepEqual(selectCardPingTasks(tasks, '已删除', 1), [tasks[1]]);
 });

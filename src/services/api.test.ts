@@ -75,6 +75,8 @@ test('returning online or to the foreground cancels backoff without duplicating 
     service.connect();
     sockets[0].onclose();
     page.dispatchEvent(new Event('visibilitychange'));
+    windowEvents.dispatchEvent(new Event('online'));
+    t.mock.timers.tick(60000);
     assert.equal(sockets.length, 1);
     page.hidden = false;
     page.dispatchEvent(new Event('visibilitychange'));
@@ -104,10 +106,12 @@ test('legacy REST endpoints preserve UUIDs containing URL delimiters', async t =
   const uuid = 'node/a?b&c#d';
   await apiService.getNodeRecentStats(uuid);
   await apiService.getLoadHistory(uuid);
+  await apiService.getLoadHistory(uuid, 168);
   await apiService.getPingHistory(uuid);
   assert.deepEqual(paths, [
     '/api/recent/node%2Fa%3Fb%26c%23d',
     '/api/records/load?uuid=node%2Fa%3Fb%26c%23d&hours=24',
+    '/api/records/load?uuid=node%2Fa%3Fb%26c%23d&hours=168',
     '/api/records/ping?uuid=node%2Fa%3Fb%26c%23d&hours=24',
   ]);
 });

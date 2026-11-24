@@ -6,5 +6,7 @@ Type=oneshot
 EnvironmentFile=/etc/komari-custom.env
 ExecStart=/usr/bin/python3 -B /opt/komari-maintenance/backup.py
 UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
 Nice=10
 IOSchedulingClass=idle

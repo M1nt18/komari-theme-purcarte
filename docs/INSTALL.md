@@ -2,7 +2,7 @@
 
 ## 主题
 
-从本项目 Releases 下载 `komari-theme-purcarte-v1.2.1.zip`，在 Komari 后台上传并启用 PurCarte。
+从本项目 Releases 下载 `komari-theme-purcarte-v1.2.2.zip`，在 Komari 后台上传并启用 PurCarte。
 压缩包根目录包含 `komari-theme.json`、`preview.png`、`dist/` 和构建清单 `BUILD.json`；Linux/Windows 打包均使用标准 `/` 路径。
 
 基础监控、卡片、柱图及悬浮详情使用 Komari 原有 API。周期账本、流量预测和手动流媒体检测使用下面的配套服务。
@@ -10,10 +10,9 @@
 
 ## 配套服务（可选）
 
-适用于 systemd Linux 主机，Python 3.10+，只依赖标准库。已按 Komari 1.2.5 的 SQLite `clients`、`records`、`records_long_term` 格式验证。
-其他版本先运行预检，特别是 1.6 系列迁移后的数据格式不能直接假定兼容。
+适用于 systemd Linux 主机，Python 3.10+，只依赖标准库。支持 Komari 1.2.5 的 SQLite 历史表，以及 Komari 1.6.2 的原生 SQLite 指标库。安装前先运行预检。
 
-解压 `komari-custom-services-v1.2.1.zip` 后：
+解压 `komari-custom-services-v1.2.2.zip` 后：
 
 ```bash
 python3 install.py --source /opt/komari/data/komari.db --origin https://monitor.example.com --check
@@ -23,11 +22,13 @@ sudo python3 install.py --source /opt/komari/data/komari.db --origin https://mon
 `--core` 默认 `http://127.0.0.1:25774`，可指定本机 Komari API 地址。源库和所在目录需允许服务账户只读访问，包括活跃 WAL/SHM。
 安装器仅写独立服务目录、状态目录和服务配置，不写核心数据库。修改过的 `traffic_reset_day`/`traffic_baseline_usage` 字段存在时会被使用；普通库无这两个字段时按每月1日重置、不设置校准。
 
+Komari 1.6.2 的指标路径默认为主库同目录下的 `metrics.db`。可用 `--metrics-db` 指定其他 SQLite 路径。新建的原生 SQLite 安装从安装时所在的分钟开始记账。升级过的主库或需要续接的旧账本使用先前记录的切换分钟，可通过 `--metrics-start` 指定 UTC Unix 秒数。安装器会沿用环境配置和账本中已有的切换记录。这个边界应在旧主控停止写入之后、新主控接收真实上报之前，用于区分迁移的历史聚合数据和原生流量增量。
+
 将 `nginx/komari-custom.conf.example` 的 location 加到现有 HTTPS server block，保留原证书、根路径代理和 WebSocket 配置，运行 `nginx -t` 后 reload Nginx。
-`/etc/komari-custom.env` 中的 `KOMARI_PUBLIC_ORIGIN` 必须和访问站点的 HTTPS Origin 一致，供网页手动检测鉴权校验。
+`/etc/komari-custom.env` 中的 `KOMARI_PUBLIC_ORIGIN` 必须和访问站点的 HTTPS Origin 一致，供网页手动检测鉴权校验。站点另有合法入口时，在反代上将该入口的精确 Origin 映射到配置值，并原样转发其他请求的 Origin。重新安装会保留额外的环境配置。
 
 服务 `komari-traffic-ledger` 监听 `127.0.0.1:25776`。状态存储于 `/var/lib/komari-traffic-ledger/ledger.sqlite` 和 `unlock.sqlite`。
-每日备份 timer 使用 SQLite backup API 备份核心及两份独立库到 `/var/backups/komari-custom`，保留14天；这是本机备份，异地副本需另行配置。
+每日备份 timer 使用 SQLite backup API 将核心库、账本、流媒体结果库以及已配置的原生指标库保存到 `/var/backups/komari-custom`，保留 14 天。异地副本需另行配置。
 默认备份服务单元和环境配置；需要备份现有 Nginx 文件时，可在环境文件添加 `KOMARI_BACKUP_CONFIG`，用冒号分隔文件的绝对路径。
 
 ## 每台节点的流媒体检测
@@ -49,7 +50,7 @@ KOMARI_URL=https://monitor.example.com sh /root/komari-unlock-install.sh
 ## 设置迁移
 
 - 旧的 `backagroundAlignment` 拼写自动迁移为 `backgroundAlignment`。
-- 流量重置日/起始校准应在核心节点管理中设置，主题面板不再提供无效的独立起始值控件。
+- 流量配额和计费方向在核心节点管理中设置。已保留自定义账期字段的主控可通过 `/opt/komari-maintenance/manage_billing.py --source /opt/komari/data/komari.db --uuid <节点 UUID>` 查看重置日和校准值。使用 `--help` 查看修改参数。
 - 旧版写死在源码的特殊节点任务不再公开内置：升级后在主题设置的“机器卡片 → 各节点卡片延迟任务”选择原任务。
 - 网格固定使用连续流量条和时间线；表格圆环/条形样式的选项只控制表格。浏览器偏好和站点默认设置分开保存。
 - 流量预测与流媒体标签可独立隐藏。关掉显示开关不会删除账本或检测结果，也不会触发检测。

@@ -122,7 +122,7 @@ def main():
             headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
         with urllib.request.urlopen(request,timeout=15) as response:json.load(response)
     CONFIG.write_text(json.dumps(settings));CONFIG.chmod(0o600)
-    python=shutil.which('python3')
+    python=shutil.which('python3') or sys.executable
     if systemd:
         service='''[Unit]
 Description=Komari media unlock worker (fixed detection only)

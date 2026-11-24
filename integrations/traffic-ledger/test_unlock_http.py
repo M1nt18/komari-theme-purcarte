@@ -18,6 +18,10 @@ from test_unlock import OUTPUT,WORKER
 
 class Core(BaseHTTPRequestHandler):
     def do_GET(self):
+        status=self.server.reject_paths.get(self.path)
+        if status:
+            self.send_error(status)
+            return
         admin=self.headers.get('Cookie')=='session_token=test-admin'
         payload={'logged_in':admin} if self.path=='/api/me' else {'status':'success','data':[{'uuid':'a','name':'A'}]+([{'uuid':'b','name':'B'}] if admin else [])}
         body=json.dumps(payload).encode();self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
@@ -40,6 +44,7 @@ class HTTPTests(unittest.TestCase):
 
         with ThreadingHTTPServer(('127.0.0.1', 0), VisibleCore) as backend:
             backend.private = False
+            backend.reject_paths = {}
             thread = threading.Thread(target=backend.serve_forever, daemon=True)
             thread.start()
             client = CoreClient(f'http://127.0.0.1:{backend.server_port}')
@@ -77,6 +82,7 @@ class HTTPTests(unittest.TestCase):
                 pass
 
         with BoundedHTTPServer(('127.0.0.1', 0), SlowHandler, max_workers=1) as server:
+            server.busy_timeout = 0.75
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             url = f'http://127.0.0.1:{server.server_port}'
@@ -91,9 +97,15 @@ class HTTPTests(unittest.TestCase):
                     first = pool.submit(get)
                     try:
                         self.assertTrue(entered.wait(3))
-                        with self.assertRaises(urllib.error.HTTPError) as failure:
-                            get()
-                        self.assertEqual(failure.exception.code, 503)
+                        with socket.create_connection(server.server_address, timeout=3) as slow:
+                            slow.sendall(b'GET / HTTP/1.1\r\nHost: localhost\r\n')
+                            self.assertIn(b'503', slow.recv(512))
+                            # The first rejected socket remains open and
+                            # undrained while the next request receives 503.
+                            with self.assertRaises(urllib.error.HTTPError) as failure:
+                                get()
+                            self.assertEqual(failure.exception.code, 503)
+                            self.assertEqual(failure.exception.headers['Retry-After'], '1')
                     finally:
                         release.set()
                     self.assertEqual(first.result(timeout=3), 200)
@@ -115,6 +127,7 @@ class HTTPTests(unittest.TestCase):
                 CREATE TABLE records(client TEXT,time TEXT,traffic_up INTEGER,traffic_down INTEGER);
                 CREATE TABLE records_long_term(client TEXT,time TEXT,traffic_up INTEGER,traffic_down INTEGER);''');db.close()
             core=ThreadingHTTPServer(('127.0.0.1',0),Core)
+            core.reject_paths={}
             thread=threading.Thread(target=core.serve_forever,daemon=True);thread.start()
             with socket.socket() as listener:listener.bind(('127.0.0.1',0));port=listener.getsockname()[1]
             process=subprocess.Popen([sys.executable,'-B',str(Path(__file__).with_name('server.py')),'--source',str(source),'--state',str(root/'ledger.sqlite'),'--port',str(port),'--core','http://127.0.0.1:'+str(core.server_port),'--public-origin','https://monitor.example.test'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -134,12 +147,21 @@ class HTTPTests(unittest.TestCase):
                 else:self.fail('test server did not start')
                 self.assertEqual(call(prefix+'/probe',{'clients':['a']})[0],403)
                 admin={'Cookie':'session_token=test-admin','Origin':'https://monitor.example.test'}
+                self.assertEqual(call(prefix+'/probe',{'clients':['a']},{'Cookie':admin['Cookie']})[0],403)
                 self.assertEqual(call(prefix+'/probe',{'clients':['a']},{**admin,'Origin':'https://other.example'})[0],403)
+                for fetch_site in ('same-site', 'cross-site'):
+                    self.assertEqual(call(prefix+'/probe',{'clients':['a']},{**admin,'Sec-Fetch-Site':fetch_site})[0],403)
+                core.reject_paths['/api/me']=401
+                self.assertEqual(call(prefix+'/probe',{'clients':['a']},admin)[0],401)
+                core.reject_paths.clear()
+                core.reject_paths['/api/nodes']=403
+                self.assertEqual(call(prefix+'/probe',{'clients':['a']},admin)[0],403)
+                core.reject_paths.clear()
                 self.assertEqual(call(prefix+'/worker/identify')[0],401)
                 auth={'Authorization':'Bearer test-node-token-A'}
                 self.assertEqual(call(prefix+'/worker/identify',headers=auth)[1]['data']['uuid'],'a')
                 job=call(prefix+'/worker/poll',{'worker_id':WORKER},auth)[1]['data']['job']
-                self.assertEqual(call(prefix+'/probe',{'clients':['a']},admin)[1]['data']['reason'],'already_running')
+                self.assertEqual(call(prefix+'/probe',{'clients':['a']},{**admin,'Sec-Fetch-Site':'same-origin'})[1]['data']['reason'],'already_running')
                 report={'id':job['id'],'lease':job['lease'],'exit_code':0,'output':OUTPUT}
                 self.assertEqual(call(prefix+'/worker/report',report,{'Authorization':'Bearer test-node-token-B'})[0],403)
                 self.assertEqual(call(prefix+'/worker/report',report,auth)[0],200)

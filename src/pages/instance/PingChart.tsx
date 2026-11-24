@@ -30,6 +30,7 @@ import Tips from "@/components/ui/tips";
 import { generateColor, lableFormatter } from "@/utils/chartHelper";
 import { useLocale } from "@/config/hooks";
 import { formatPingMetric, pingSummary } from "@/features/monitoring/ping-summary";
+import { mergePingChartPoints } from "@/features/monitoring/ping-chart-points";
 
 interface PingChartProps {
   node: NodeData;
@@ -78,56 +79,19 @@ const PingChart = memo(({ node, hours }: PingChartProps) => {
     const tasks = pingHistory?.tasks || [];
     if (!data.length || !tasks.length) return [];
 
-    const taskIntervals = tasks
-      .map((t) => t.interval)
-      .filter((v): v is number => typeof v === "number" && v > 0);
-    const fallbackIntervalSec = taskIntervals.length
-      ? Math.min(...taskIntervals)
-      : 60;
+    let shortestInterval = Infinity;
+    for (const { interval } of tasks) {
+      if (Number.isFinite(interval) && interval > 0) {
+        shortestInterval = Math.min(shortestInterval, interval);
+      }
+    }
+    const fallbackIntervalSec = shortestInterval === Infinity ? 60 : shortestInterval;
 
     const toleranceMs = Math.min(
       6000,
       Math.max(800, Math.floor(fallbackIntervalSec * 1000 * 0.25))
     );
-    const grouped: Record<number, any> = {};
-    const anchors: number[] = [];
-    for (const rec of data) {
-      const ts = new Date(rec.time).getTime();
-      let anchor: number | null = null;
-      for (const a of anchors) {
-        if (Math.abs(a - ts) <= toleranceMs) {
-          anchor = a;
-          break;
-        }
-      }
-      const use = anchor ?? ts;
-      if (!grouped[use]) {
-        grouped[use] = { time: new Date(use).toISOString() };
-        if (anchor === null) anchors.push(use);
-      }
-      grouped[use][rec.task_id] = rec.value < 0 ? null : rec.value;
-    }
-    const merged = Object.values(grouped).sort(
-      (a: any, b: any) =>
-        new Date(a.time).getTime() - new Date(b.time).getTime()
-    );
-
-    if (!merged.length) return [];
-
-    const lastTs = new Date(
-      (merged as any[])[(merged as any[]).length - 1].time
-    ).getTime();
-    const fromTs = lastTs - hours * 3600_000;
-    let startIdx = 0;
-    for (let i = 0; i < (merged as any[]).length; i++) {
-      const ts = new Date((merged as any[])[i].time).getTime();
-      if (ts >= fromTs) {
-        startIdx = Math.max(0, i - 1);
-        break;
-      }
-    }
-    const clipped = (merged as any[]).slice(startIdx);
-    return clipped;
+    return mergePingChartPoints(data, toleranceMs, hours);
   }, [pingHistory, hours]);
 
   const chartData = useMemo(() => {
@@ -136,35 +100,23 @@ const PingChart = memo(({ node, hours }: PingChartProps) => {
     if (!tasks.length || !full.length) return [];
 
     if (cutPeak) {
-      const taskKeys = tasks.map((task) => String(task.id));
-      full = cutPeakValues(full, taskKeys);
+      full = cutPeakValues(full, tasks.map((task) => String(task.id)));
     }
 
     const keys = tasks.map((t) => String(t.id));
 
-    // 暂存-1导致的null值
-    const preservedNulls = new Set<string>();
-    full.forEach((d, i) => {
-      keys.forEach((key) => {
-        if (d[key] === null) {
-          preservedNulls.add(`${i}-${key}`);
-        }
-      });
-    });
-
+    const beforeInterpolation = full;
     full = interpolateNullsLinear(full, keys, {
       maxGapMultiplier: 6,
       minCapMs: 2 * 60_000,
       maxCapMs: 30 * 60_000,
     });
 
-    // 恢复-1导致的null值
+    // Explicit packet loss remains a gap after filling missing samples.
     full.forEach((d, i) => {
-      keys.forEach((key) => {
-        if (preservedNulls.has(`${i}-${key}`)) {
-          d[key] = null;
-        }
-      });
+      for (const { id } of tasks) {
+        if (beforeInterpolation[i][id] === null) d[id] = null;
+      }
     });
 
     if (full.length > pingChartMaxPoints && pingChartMaxPoints > 0) {
@@ -176,10 +128,7 @@ const PingChart = memo(({ node, hours }: PingChartProps) => {
       full = sampledData;
     }
 
-    return full.map((d: any) => ({
-      ...d,
-      time: new Date(d.time).getTime(),
-    }));
+    return full;
   }, [midData, cutPeak, pingHistory?.tasks, pingChartMaxPoints]);
 
   const handleTaskVisibilityToggle = (taskId: number) => {
@@ -213,7 +162,7 @@ const PingChart = memo(({ node, hours }: PingChartProps) => {
       if (!visiblePingTasks.includes(task.id)) {
         continue;
       }
-      const taskKey = String(task.id);
+      const taskKey = task.id;
       for (let i = 1; i < chartData.length; i++) {
         const prevPoint = chartData[i - 1];
         const currentPoint = chartData[i];
@@ -289,9 +238,11 @@ const PingChart = memo(({ node, hours }: PingChartProps) => {
                 const isVisible = visiblePingTasks.includes(task.id);
 
                 return (
-                  <div
+                  <button
                     key={task.id}
-                    className={`h-auto px-3 py-1.5 flex flex-col leading-snug text-center cursor-pointer rounded-md transition-all outline-2 outline ${
+                    type="button"
+                    aria-pressed={isVisible}
+                    className={`h-auto px-3 py-1.5 flex flex-col leading-snug text-center cursor-pointer rounded-md transition-all outline-2 outline focus-visible:ring-2 focus-visible:ring-offset-2 ${
                       isVisible ? "" : "outline-transparent"
                     }`}
                     onClick={() => handleTaskVisibilityToggle(task.id)}
@@ -301,8 +252,8 @@ const PingChart = memo(({ node, hours }: PingChartProps) => {
                         ? `0 0 8px ${task.color}`
                         : undefined,
                     }}>
-                    <div className="font-semibold">{task.name}</div>
-                    <div className="flex text-xs font-normal">
+                    <span className="font-semibold">{task.name}</span>
+                    <span className="flex text-xs font-normal">
                       <span>
                         {task.value !== null
                           ? `${task.value.toFixed(1)} ms`
@@ -311,14 +262,14 @@ const PingChart = memo(({ node, hours }: PingChartProps) => {
                           1
                         )}% | 缺测 ${task.missing.toFixed(1)}%`}
                       </span>
-                    </div>
-                    <div className="text-xs tabular-nums" data-ping-summary
-                      title="基于选中时段的成功探测记录。抖动为延迟标准差。">
+                    </span>
+                    <span className="text-xs tabular-nums" data-ping-summary
+                      title={t("chart.latencyStdDevHelp")}>
                       P50 {formatPingMetric(task.summary.p50)} · P99 {formatPingMetric(task.summary.p99)}
                       <br />
-                      抖动 {formatPingMetric(task.summary.jitter)} · 有效 {task.summary.count}
-                    </div>
-                  </div>
+                      {t("chart.latencyStdDev")} {formatPingMetric(task.summary.jitter)} · 有效 {task.summary.count}
+                    </span>
+                  </button>
                 );
               })}
             </div>

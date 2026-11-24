@@ -6,6 +6,8 @@ import type { ConfigOptions } from '@/config/default';
 import { normalizeSettings,settingsSignature } from '@/config/settings-model';
 import { defaultTexts } from '@/config/locales';
 import { apiService } from '@/services/api';
+import { useNodeData } from '@/contexts/NodeDataContext';
+import type { PingTask } from '@/types/node';
 import themeDefinition from '../../../komari-theme.json';
 import SettingItem from './SettingItem';
 import CustomTextsEditor from './CustomTextsEditor';
@@ -25,8 +27,15 @@ export default function SettingsPanel({isOpen,onClose}:Props){
   const [textPage,setTextPage]=useState('main');
   const [preview,setPreview]=useState(true);
   const [saving,setSaving]=useState(false);
+  const [pingTasks, setPingTasks] = useState<string[]>([]);
+  const { nodes, getPingHistory } = useNodeData();
   const mobile=useIsMobile();
   const definitions=themeDefinition.configuration.data;
+  const start=definitions.findIndex(item=>item.type==='title'&&item.name===page);
+  const next=definitions.findIndex((item,index)=>index>start&&item.type==='title');
+  const items=definitions.slice(start+1,next<0?undefined:next);
+  const showPingTasks = isOpen && page !== "main" && items.some(item =>
+    item.type === "ping-task-select" || item.type === "node-ping-task-map");
   const dirty=settingsSignature(draft)!==savedKey;
   const previewPayload=useMemo(()=>isOpen&&preview?draft:EMPTY_PREVIEW,[draft,isOpen,preview]);
   useEffect(()=>{
@@ -36,6 +45,33 @@ export default function SettingsPanel({isOpen,onClose}:Props){
     updatePreviewConfig(previewPayload);
   },[previewPayload,updatePreviewConfig]);
   useEffect(()=>()=>updatePreviewConfig({}),[updatePreviewConfig]);
+  useEffect(() => {
+    if (!showPingTasks) return;
+    let active = true;
+    const names = (tasks: readonly Pick<PingTask, "name">[]) =>
+      [...new Set(tasks.map(task => task?.name).filter(name => typeof name === "string" && name.trim()))];
+    async function loadPingTasks() {
+      const result = await apiService.get<PingTask[]>("/api/task/ping");
+      if (!active) return;
+      if (Array.isArray(result.data)) {
+        setPingTasks(names(result.data));
+        return;
+      }
+      // Older Komari versions may only expose tasks in a node's history.
+      for (const node of nodes) {
+        const history = await getPingHistory(node.uuid, 1);
+        if (!active) return;
+        const choices = names(history?.tasks ?? []);
+        if (choices.length) {
+          setPingTasks(choices);
+          return;
+        }
+      }
+      setPingTasks([]);
+    }
+    void loadPingTasks();
+    return () => { active = false; };
+  }, [showPingTasks, nodes, getPingHistory]);
   const close=()=>{if(saving)return;setDraft(saved);updatePreviewConfig({});onClose();};
   const save=async()=>{
     if(saving||!publicSettings?.theme)return;
@@ -63,9 +99,6 @@ export default function SettingsPanel({isOpen,onClose}:Props){
     }catch(error){toast.error(error instanceof Error?error.message:t('setting.importError'));}
   };
   if(!isOpen)return null;
-  const start=definitions.findIndex(item=>item.type==='title'&&item.name===page);
-  const next=definitions.findIndex((item,index)=>index>start&&item.type==='title');
-  const items=definitions.slice(start+1,next<0?undefined:next);
   return <aside role="dialog" aria-label={t('setting.title')} className={mobile
     ? 'fixed bottom-0 left-0 w-full h-3/4 bg-gray-100/95 dark:bg-gray-900/95 theme-card-style shadow-lg z-50 p-4 overflow-y-auto'
     : 'h-dvh w-(--setting-width) bg-gray-100/95 dark:bg-gray-900/95 theme-card-style shadow-lg p-4 overflow-y-auto shrink-0'}
@@ -91,6 +124,6 @@ export default function SettingsPanel({isOpen,onClose}:Props){
       ? definitions.filter(item=>item.type==='title').map(item=><Button key={item.name} className="w-full justify-start" onClick={()=>setPage(item.name)}>{item.name}</Button>)
       : items.map(item=>'key'in item&&item.key==='customTexts'
         ? <CustomTextsEditor key={item.key} value={draft.customTexts||''} onChange={value=>change('customTexts',value)} page={textPage} onPageChange={setTextPage}/>
-        : <SettingItem key={'key'in item?item.key:item.name} item={item} editingConfig={draft} onConfigChange={change}/>)}</fieldset>
+        : <SettingItem key={'key'in item?item.key:item.name} item={item} editingConfig={draft} onConfigChange={change} pingTasks={pingTasks}/>)}</fieldset>
   </aside>;
 }

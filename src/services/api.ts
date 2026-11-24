@@ -150,7 +150,7 @@ class ApiService {
     hours: number = 24
   ): Promise<{ count: number; records: HistoryRecord[] } | null> {
     const maxCount = historyPointLimit(hours);
-    if (this.useRpc || maxCount !== undefined) {
+    if (this.useRpc) {
       const response = await this.rpcCall<Parameters<typeof readRpcLoadHistory>[0]>("common:getRecords", {
         uuid,
         hours,
@@ -409,10 +409,10 @@ export class WebSocketService {
   }
 
   private reconnect() {
-    if (this.stopped || this.reconnectTimer) return;
+    if (this.stopped || this.reconnectTimer || globalThis.document?.hidden) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.connect();
+      if (!globalThis.document?.hidden) this.connect();
     }, this.retryDelayMs);
     this.retryDelayMs = Math.min(this.retryDelayMs * 2, 30000);
   }
@@ -473,7 +473,7 @@ export class WebSocketService {
   };
 
   private resume = () => {
-    if (this.stopped) return;
+    if (this.stopped || globalThis.document?.hidden) return;
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.sendUpdateRequest();
     } else if (!this.ws || this.ws.readyState >= WebSocket.CLOSING) {

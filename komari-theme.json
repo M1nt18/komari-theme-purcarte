@@ -2,7 +2,7 @@
   "name": "PurCarte",
   "short": "PurCarte",
   "description": "紧凑卡片、连续周期流量、悬浮详情、流量预测和手动流媒体检测。",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "author": "Montia & Gemini",
   "url": "https://github.com/M1nt18/komari-theme-purcarte",
   "preview": "preview.png",
@@ -219,6 +219,13 @@
         "type": "switch",
         "default": true,
         "help": "启用后默认在标题栏右侧显示管理按钮"
+      },
+      {
+        "key": "enableRankingButton",
+        "name": "显示实时排行按钮",
+        "type": "switch",
+        "default": true,
+        "help": "在首页标题栏显示实时排行入口。"
       },
       {
         "key": "selectedFooterStyle",

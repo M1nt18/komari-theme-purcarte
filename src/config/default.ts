@@ -27,6 +27,7 @@ export interface ConfigOptions {
   titleText: string; // 标题文本
   enableSearchButton: boolean; // 是否启用搜索按钮
   enableAdminButton: boolean; // 是否启用管理员按钮
+  enableRankingButton: boolean;
   selectedFooterStyle: FooterStyle; // 页脚样式
   enableJsonRPC2Api: boolean; // 是否启用 JSON-RPC2 API 适配
   isShowStatsInHeader: boolean; // 是否在标题栏中显示统计信息
@@ -88,6 +89,7 @@ export const DEFAULT_CONFIG: ConfigOptions = {
   titleText: "",
   enableSearchButton: true,
   enableAdminButton: true,
+  enableRankingButton: true,
   selectedFooterStyle: "fixed",
   enableJsonRPC2Api: false,
   isShowStatsInHeader: false,

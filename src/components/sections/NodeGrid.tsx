@@ -20,7 +20,6 @@ import { useLocale } from "@/config/hooks";
 import { NodeDisplayContainer } from "./NodeDisplay";
 import { NodeCardPingChart } from "./NodeCardPingChart";
 import { quotaTitle } from "../../../integrations/traffic-ledger/traffic-store.mjs";
-import { nodeTaskName } from '@/config/node-tasks';
 
 
 interface NodeGridContainerProps {
@@ -64,8 +63,6 @@ export const NodeGrid = ({ node, onShowDetails }: NodeGridProps) => {
     enableCardExpiryBadge,
     enableCardConnectionMetrics,
     enableSwap,
-    cardPingChartNodeTasks,
-    cardPingChartTaskName,
   } = useAppConfig();
   const { t } = useLocale();
 
@@ -208,10 +205,7 @@ export const NodeGrid = ({ node, onShowDetails }: NodeGridProps) => {
           <TrafficQuota quota={quota} title={quotaTitle(quota)} />
         )}
 
-        <div data-cycle-ping-preview="" className="min-h-16"><NodeCardPingChart
-          node={node}
-          singleCarrier={nodeTaskName(cardPingChartNodeTasks,node.uuid,cardPingChartTaskName)}
-        /></div>
+        <div data-cycle-ping-preview="" className="min-h-16"><NodeCardPingChart node={node} /></div>
 
         <div className="flex justify-between -mt-8 pt-3 text-xs">
           <div className="flex w-full justify-start">

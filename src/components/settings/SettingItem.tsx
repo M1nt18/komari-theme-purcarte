@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { useNodeData } from "@/contexts/NodeDataContext";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -17,60 +16,22 @@ interface SettingItemProps {
   item: any;
   editingConfig: Partial<ConfigOptions>;
   onConfigChange: (key: keyof ConfigOptions, value: any) => void;
+  pingTasks: readonly string[];
 }
 
 const SettingItem = ({
   item,
   editingConfig,
   onConfigChange,
+  pingTasks,
 }: SettingItemProps) => {
-  const { nodes, getPingHistory } = useNodeData();
   const defaultValue = item.default;
   const currentValue =
     editingConfig[item.key as keyof ConfigOptions] ?? defaultValue;
   const isModified = currentValue !== defaultValue;
-  const [localValue, setLocalValue] = useState(currentValue);
-  const [pingTasks, setPingTasks] = useState<string[]>([]);
-
-  useEffect(() => {
-    setLocalValue(currentValue);
-  }, [currentValue]);
-
-  useEffect(() => {
-    if (item.type !== "ping-task-select") return;
-    let cancelled = false;
-
-    const loadPingTasks = async () => {
-      for (const node of nodes) {
-        const history = await getPingHistory(node.uuid, 1);
-        const names =
-          history?.tasks
-            ?.map((task) => task.name)
-            .filter((name): name is string => Boolean(name)) ?? [];
-        if (names.length && !cancelled) {
-          setPingTasks(Array.from(new Set(names)));
-          return;
-        }
-      }
-      if (!cancelled) setPingTasks([]);
-    };
-
-    loadPingTasks();
-    return () => {
-      cancelled = true;
-    };
-  }, [getPingHistory, item.type, nodes]);
-
-  const handleBlur = () => {
-    if (item.type === "number") {
-      const bounds=numericLimits[item.key];
-      const parsed=Number(localValue);
-      const value=Number.isFinite(parsed)?bounds?Math.max(bounds[0],Math.min(bounds[1],parsed)):parsed:currentValue;
-      setLocalValue(value);onConfigChange(item.key,value);
-    } else {
-      onConfigChange(item.key, localValue);
-    }
-  };
+  const [numberText, setNumberText] = useState<string | null>(null);
+  const bounds = item.type === "number" ? numericLimits[item.key] : undefined;
+  const update = (value: unknown) => onConfigChange(item.key, value);
 
   const renderInput = () => {
     switch (item.type) {
@@ -78,13 +39,27 @@ const SettingItem = ({
         return (
           <Input
             type="number"
-            min={numericLimits[item.key]?.[0]}
-            max={numericLimits[item.key]?.[1]}
+            min={bounds?.[0]}
+            max={bounds?.[1]}
             aria-label={item.name}
             className="theme-card-style"
-            value={localValue as number}
-            onChange={(e) => setLocalValue(e.target.value)}
-            onBlur={handleBlur}
+            value={numberText ?? currentValue}
+            onChange={event => {
+              const { value, valueAsNumber } = event.currentTarget;
+              setNumberText(value);
+              if (Number.isFinite(valueAsNumber) &&
+                  (!bounds || (valueAsNumber >= bounds[0] && valueAsNumber <= bounds[1]))) {
+                update(valueAsNumber);
+              }
+            }}
+            onBlur={event => {
+              setNumberText(null);
+              const parsed = event.currentTarget.valueAsNumber;
+              if (bounds && Number.isFinite(parsed)) {
+                const clamped = Math.max(bounds[0], Math.min(bounds[1], parsed));
+                if (clamped !== currentValue) update(clamped);
+              }
+            }}
           />
         );
       case "string":
@@ -93,30 +68,24 @@ const SettingItem = ({
             type="text"
             aria-label={item.name}
             className="theme-card-style"
-            value={localValue as string}
-            onChange={(e) => setLocalValue(e.target.value)}
-            onBlur={handleBlur}
+            maxLength={100000}
+            value={currentValue}
+            onChange={event => update(event.currentTarget.value)}
           />
         );
       case "switch":
         return (
           <Switch
             aria-label={item.name}
-            checked={localValue as boolean}
-            onCheckedChange={(checked) => {
-              setLocalValue(checked);
-              onConfigChange(item.key, checked);
-            }}
+            checked={currentValue}
+            onCheckedChange={update}
           />
         );
       case "select":
         return (
           <Select
-            value={localValue as string}
-            onValueChange={(value) => {
-              setLocalValue(value);
-              onConfigChange(item.key, value);
-            }}>
+            value={currentValue}
+            onValueChange={update}>
             <SelectTrigger aria-label={item.name}>
               <SelectValue />
             </SelectTrigger>
@@ -132,19 +101,17 @@ const SettingItem = ({
       case "ping-task-select":
         return (
           <Select
-            value={(localValue as string) || "__average__"}
-            onValueChange={(value) => {
-              const nextValue = value === "__average__" ? "" : value;
-              setLocalValue(nextValue);
-              onConfigChange(item.key, nextValue);
-            }}>
+            value={currentValue ? `task:${currentValue}` : "default"}
+            onValueChange={value => update(value === "default" ? "" : value.slice(5))}>
             <SelectTrigger aria-label={item.name}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__average__">全部平均</SelectItem>
+              <SelectItem value="default">默认（网格优先电信，紧凑取平均）</SelectItem>
+              {currentValue && !pingTasks.includes(currentValue) &&
+                <SelectItem value={`task:${currentValue}`}>{currentValue}</SelectItem>}
               {pingTasks.map((taskName) => (
-                <SelectItem key={taskName} value={taskName}>
+                <SelectItem key={taskName} value={`task:${taskName}`}>
                   {taskName}
                 </SelectItem>
               ))}
@@ -152,7 +119,7 @@ const SettingItem = ({
           </Select>
         );
       case "node-ping-task-map":
-        return <NodeTaskSettings value={String(localValue||'{}')} onChange={value=>{setLocalValue(value);onConfigChange(item.key,value);}}/>;
+        return <NodeTaskSettings value={String(currentValue || "{}")} onChange={update} tasks={pingTasks} />;
       default:
         return null;
     }

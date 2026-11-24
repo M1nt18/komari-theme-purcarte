@@ -482,11 +482,6 @@ function roundPercent(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-function getTimeMs(time: string): number {
-  const value = new Date(time).getTime();
-  return Number.isFinite(value) ? value : 0;
-}
-
 /**
  * 根据 ping 历史记录计算任务统计数据。
  * 丢包率只统计已有记录中的失败探测；缺测率按任务间隔估算应有记录与实际记录的差额。
@@ -497,19 +492,31 @@ export function calculateTaskStats(
   timeRange: [number, number] | null,
   options: PingTaskStatsOptions = {}
 ): PingTaskStats {
-  const relevantRecords = timeRange
-    ? records.filter((rec) => {
-        const t = getTimeMs(rec.time);
-        return t >= timeRange[0] && t <= timeRange[1];
-      })
-    : records;
-
-  const taskRecords =
-    relevantRecords?.filter((rec) => rec.task_id === taskId) || [];
-
-  const actualCount = taskRecords.length;
-  const failedCount = taskRecords.filter((rec) => rec.value < 0).length;
-  const successfulPings = taskRecords.filter((rec) => rec.value >= 0);
+  let actualCount = 0;
+  let failedCount = 0;
+  let earliest = Infinity;
+  let latest = 0;
+  let latestSuccess = -Infinity;
+  let latestValue: number | null = null;
+  let latestTime: string | null = null;
+  for (const record of records) {
+    const timestamp = Date.parse(record.time);
+    if (!Number.isFinite(timestamp)) continue;
+    if (timeRange && (timestamp < timeRange[0] || timestamp > timeRange[1])) continue;
+    if (timestamp > 0) {
+      earliest = Math.min(earliest, timestamp);
+      latest = Math.max(latest, timestamp);
+    }
+    if (record.task_id !== taskId) continue;
+    actualCount++;
+    if (record.value < 0) {
+      failedCount++;
+    } else if (record.value >= 0 && timestamp > latestSuccess) {
+      latestSuccess = timestamp;
+      latestValue = record.value;
+      latestTime = record.time;
+    }
+  }
   const loss = actualCount > 0 ? (failedCount / actualCount) * 100 : 0;
 
   const intervalMs =
@@ -519,18 +526,15 @@ export function calculateTaskStats(
   let expectedCount = actualCount;
 
   if (intervalMs > 0) {
-    const validTimes = relevantRecords
-      .map((rec) => getTimeMs(rec.time))
-      .filter((time) => time > 0);
     let start = timeRange?.[0] ?? 0;
     let end = timeRange?.[1] ?? 0;
 
-    if (!timeRange && validTimes.length > 0) {
-      end = Math.max(...validTimes);
+    if (!timeRange && latest > 0) {
+      end = latest;
       start =
         options.hours && options.hours > 0
           ? end - options.hours * 3600_000
-          : Math.min(...validTimes);
+          : earliest;
     } else if (!timeRange && options.hours && options.hours > 0) {
       end = Date.now();
       start = end - options.hours * 3600_000;
@@ -545,16 +549,6 @@ export function calculateTaskStats(
   const missingCount = Math.max(0, expectedCount - actualCount);
   const missing =
     expectedCount > 0 ? (missingCount / expectedCount) * 100 : 0;
-
-  let latestValue: number | null = null;
-  let latestTime: string | null = null;
-  if (successfulPings.length > 0) {
-    const latestRecord = successfulPings.reduce((latest, current) => {
-      return new Date(current.time) > new Date(latest.time) ? current : latest;
-    });
-    latestValue = latestRecord.value;
-    latestTime = latestRecord.time;
-  }
 
   return {
     loss: roundPercent(loss),

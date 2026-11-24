@@ -123,6 +123,8 @@ export const defaultTexts = {
     loadingShort: "加载中...",
     route: "线路",
     packetLoss: "丢包",
+    latencyStdDev: "延迟标准差",
+    latencyStdDevHelp: "基于选中时段成功探测记录的延迟标准差。",
     loadingData: "正在加载图表数据...",
     noData: "暂无数据",
     nodeOfflineCannotFetchLiveData: "节点已离线，无法获取实时数据",

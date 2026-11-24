@@ -2,7 +2,7 @@
 /* Five full-width 24rem cards plus four 20px gaps fit within 2000px.
    Limit this expansion to the home card grid; detail pages keep their width. */
 @media (min-width: 1920px) {
-  #root:has(main .node-grid-layout) main.max-w-screen-2xl,
+  [data-home-scroll] main.max-w-screen-2xl:has(.node-grid-layout),
   #root:has(main .node-grid-layout) header [class~="w-(--main-width)"].max-w-screen-2xl {
     width: min(var(--wide-main-width, 90vw), 2000px);
     max-width: 2000px;
