@@ -75,6 +75,7 @@ export const NodeCardPingChart = memo(function NodeCardPingChart({
   const selectedTaskName = singleCarrier ?? nodeTaskName(cardPingChartNodeTasks, node.uuid, cardPingChartTaskName);
   const { ref, hasApproached } = useNearViewport(enableCardPingChart);
   const { loading: loadingHistory, pingHistory } = usePingChart(node, cardPingChartHours, enableCardPingChart && hasApproached);
+  const windowEnd = useMemo(() => pingHistory ? Date.now() : 0, [pingHistory]);
   const loading = !hasApproached || loadingHistory;
 
   // Live CPU/network updates do not change this history. Build only the active
@@ -84,26 +85,26 @@ export const NodeCardPingChart = memo(function NodeCardPingChart({
       ? pickTasks(pingHistory.tasks, selectedTaskName, cardPingChartFallbackTaskId)
       : [];
     return cardPingData(compact ? pingHistory?.records ?? [] : [], tasks,
-      cardPingChartMaxBars);
+      cardPingChartMaxBars, cardPingChartHours, windowEnd);
   }, [compact, enableCardPingChart, pingHistory, selectedTaskName,
-    cardPingChartFallbackTaskId, cardPingChartMaxBars]);
+    cardPingChartFallbackTaskId, cardPingChartMaxBars, cardPingChartHours, windowEnd]);
 
   const selectedData = useMemo(() => {
     if (!enableCardPingChart || compact || !selectedTaskName || !pingHistory) return null;
     const task = pickTasks(pingHistory.tasks ?? [], selectedTaskName, cardPingChartFallbackTaskId)[0];
     return task ? cardPingData(pingHistory.records ?? [], [task],
-      cardPingChartMaxBars) : null;
+      cardPingChartMaxBars, cardPingChartHours, windowEnd) : null;
   }, [enableCardPingChart, compact, selectedTaskName, pingHistory,
-    cardPingChartMaxBars, cardPingChartFallbackTaskId]);
+    cardPingChartMaxBars, cardPingChartFallbackTaskId, cardPingChartHours, windowEnd]);
 
   const networkData = useMemo(() => {
     if (!enableCardPingChart || compact || selectedTaskName || !pingHistory) return [];
     return pickNetworkTasks(pingHistory.tasks ?? []).map(task => ({
       task, ...cardPingData(pingHistory.records ?? [], [task],
-        cardPingChartMaxBars),
+        cardPingChartMaxBars, cardPingChartHours, windowEnd),
     }));
   }, [enableCardPingChart, compact, selectedTaskName, pingHistory,
-    cardPingChartMaxBars]);
+    cardPingChartMaxBars, cardPingChartHours, windowEnd]);
 
   if (!enableCardPingChart) return null;
 
@@ -231,22 +232,22 @@ function getLatencyColor(value: number): string {
   return YELLOW_COLOR;
 }
 
-function PingBars({ values, loss = false }: { values: number[]; loss?: boolean }) {
+function PingBars({ values, loss = false }: { values: (number | null)[]; loss?: boolean }) {
   if (!values.length) {
     return <div className="h-2 min-w-0 flex-1" />;
   }
 
-  const colors = values.map(value => value < 0 ? LOSS_COLOR
+  const colors = values.map(value => value === null ? "#94a3b866" : value < 0 ? LOSS_COLOR
     : loss ? OK_COLOR + "bf" : getLatencyColor(value) + "f2");
-  return <div aria-hidden="true" className="h-9 preview-ping-chart-up min-w-0 flex-1"
+  return <div aria-hidden="true" title={values.includes(null) ? "灰色表示该时段没有采样" : undefined} className="h-9 preview-ping-chart-up min-w-0 flex-1"
     style={{ backgroundImage: pingBarStrip(colors, colors.length), backgroundSize: "100% 48%",
       backgroundRepeat: "no-repeat", backgroundPosition: "bottom" }} />;
 }
 
-function LatencyBars({ values }: { values: number[] }) {
+function LatencyBars({ values }: { values: (number | null)[] }) {
   return <PingBars values={values} />;
 }
 
-function LossBars({ values }: { values: number[] }) {
+function LossBars({ values }: { values: (number | null)[] }) {
   return <PingBars values={values} loss />;
 }
