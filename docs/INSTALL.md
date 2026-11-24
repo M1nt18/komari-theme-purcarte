@@ -2,7 +2,7 @@
 
 ## 主题
 
-从本项目 Releases 下载 `komari-theme-purcarte-v1.2.0.zip`，在 Komari 后台上传并启用 PurCarte。
+从本项目 Releases 下载 `komari-theme-purcarte-v1.2.1.zip`，在 Komari 后台上传并启用 PurCarte。
 压缩包根目录包含 `komari-theme.json`、`preview.png`、`dist/` 和构建清单 `BUILD.json`；Linux/Windows 打包均使用标准 `/` 路径。
 
 基础监控、卡片、柱图及悬浮详情使用 Komari 原有 API。周期账本、流量预测和手动流媒体检测使用下面的配套服务。
@@ -13,7 +13,7 @@
 适用于 systemd Linux 主机，Python 3.10+，只依赖标准库。已按 Komari 1.2.5 的 SQLite `clients`、`records`、`records_long_term` 格式验证。
 其他版本先运行预检，特别是 1.6 系列迁移后的数据格式不能直接假定兼容。
 
-解压 `komari-custom-services-v1.2.0.zip` 后：
+解压 `komari-custom-services-v1.2.1.zip` 后：
 
 ```bash
 python3 install.py --source /opt/komari/data/komari.db --origin https://monitor.example.com --check
