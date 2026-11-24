@@ -19,6 +19,116 @@ def source_db(path):
 
 
 class LedgerTests(unittest.TestCase):
+    def native_source(self):
+        with source_db(self.source) as db:
+            db.executescript('DROP TABLE records; DROP TABLE records_long_term;')
+        self.metrics = self.root / 'metrics.db'
+        with source_db(self.metrics) as db:
+            db.executescript("""
+                CREATE TABLE metric_series(id INTEGER PRIMARY KEY, metric_name TEXT, entity_id TEXT, tags TEXT);
+                CREATE TABLE metric_resolutions(id INTEGER PRIMARY KEY,resolution_milli INTEGER);
+                CREATE TABLE metric_label_sets(id INTEGER PRIMARY KEY,labels TEXT);
+                CREATE TABLE metric_rollups(
+                    series_id INTEGER,resolution_id INTEGER,label_id INTEGER,bucket_milli INTEGER,
+                    count INTEGER,sum REAL,first_val REAL,first_ts_milli INTEGER,last_ts_milli INTEGER,
+                    PRIMARY KEY(series_id,resolution_id,label_id,bucket_milli)
+                );
+                INSERT INTO metric_label_sets VALUES(1,'{}');
+            """)
+            db.executemany("INSERT INTO metric_series VALUES(?,?,'a','{}')",
+                           enumerate(('traffic.up','traffic.down','net.total.up','net.total.down'), 1))
+            db.executemany('INSERT INTO metric_resolutions VALUES(?,?)', [(w, w * 1000) for w in (60,300,3600,86400)])
+
+    def native_point(self, width, time, values, count=1, first=None, last=None, first_values=None):
+        time = int(time)
+        bucket = time // width * width
+        first = time if first is None else first
+        last = time if last is None else last
+        with source_db(self.metrics) as db:
+            for ident, value in enumerate(values, 1):
+                db.execute('INSERT OR REPLACE INTO metric_rollups VALUES(?,?,?,?,?,?,?,?,?)', (
+                    ident, width, 1, bucket * 1000, count, value,
+                    value if first_values is None else first_values[ident-1], first * 1000, last * 1000,
+                ))
+
+    def test_native_cutover_keeps_corrected_legacy_quarter_and_bridges_first_report_once(self):
+        self.sample('2026-11-14 04:04:00', 3000, 5000, raw=(1000,2000))
+        self.ledger.sync(self.now)
+        with self.ledger.connect() as db:
+            db.execute("INSERT INTO bucket_corrections VALUES('a',?,100,200,'verified legacy')",
+                       (self.now // 900 * 900,))
+        self.native_source()
+        # P95 representative copied into native minute and coarser tiers.
+        hour = self.now // 3600 * 3600
+        for width in (60,300,3600):
+            self.native_point(width, hour, [60000,55000])
+        self.native_point(60, self.now + 2, [3,905,2030,4040], count=2, last=self.now + 5,
+                          first_values=[0,900,1010,2015])
+        self.ledger = TrafficLedger(self.source, self.state, metrics_start=self.now)
+        self.ledger.sync(self.now + 10)
+        self.assertEqual((self.node()['upload_bytes'], self.node()['download_bytes']), (113,220))
+        with self.ledger.connect() as db:
+            self.assertEqual(tuple(db.execute('SELECT upload,download FROM bucket_corrections').fetchone()),(100,200))
+        self.ledger = TrafficLedger(self.source,self.state)  # stored boundary survives a restart
+        self.native_point(300, self.now + 2, [3,905], count=2,last=self.now+5)
+        self.ledger.sync(self.now + 600)
+        self.assertEqual(self.node()['used_bytes'],333)
+        with source_db(self.source) as core:
+            core.execute('ALTER TABLE clients DROP COLUMN traffic_reset_day')
+            core.execute('ALTER TABLE clients DROP COLUMN traffic_baseline_usage')
+        self.ledger.sync(self.now + 615)
+        self.assertEqual(self.node()['reset_day'],13)
+        self.assertEqual(self.node()['used_bytes'],333)
+        self.assertEqual(sum(day['samples'] for day in self.ledger.forecast_input(now=self.now)['nodes'][0]['history']), 1)
+
+    def test_native_overlapping_resolutions_backfill_partial_retention_across_reset(self):
+        self.native_source()
+        start = int(timestamp('2026-11-12T15:00:00Z'))
+        self.ledger = TrafficLedger(self.source,self.state,metrics_start=start)
+        for at, up, down in [(start+2,2,4),(start+62,3,4),(start+902,7,9),(start+3602,17,18)]:
+            self.native_point(60,at,[up,down])
+        # The parent includes an additional minute removed by retention.
+        self.native_point(300,start+2,[10,12],count=3,last=start+122)
+        self.native_point(3600,start+2,[37,40],count=5,last=start+2102)
+        self.ledger.sync(start+4000)
+        forecast=self.ledger.forecast_input(now=start+4000)['nodes'][0]
+        self.assertEqual(forecast['quota']['used_bytes'],35)
+        self.assertEqual([(x['out_bytes'],x['in_bytes']) for x in forecast['history']],[(37,40),(17,18)])
+        with source_db(self.metrics) as db:
+            db.execute('DELETE FROM metric_rollups WHERE bucket_milli<? AND resolution_id IN (60,300)',((start+3600)*1000,))
+        self.ledger = TrafficLedger(self.source,self.state)
+        self.ledger.sync(start+4100)
+        self.assertEqual(forecast, self.ledger.forecast_input(now=start+4100)['nodes'][0])
+
+    def test_native_wrong_or_missing_boundary_and_incomplete_pair_roll_back(self):
+        self.sample('2026-11-14 04:04:00',10,20)
+        self.ledger.sync(self.now)
+        self.native_source()
+        with self.assertRaisesRegex(ValueError,'KOMARI_METRICS_START'):
+            self.ledger.sync(self.now + 15)
+        for start in [self.now-120,self.now+1]:
+            with self.assertRaises(ValueError):
+                TrafficLedger(self.source,self.state,metrics_start=start).sync(self.now+20)
+        self.ledger=TrafficLedger(self.source,self.state,metrics_start=self.now)
+        self.native_point(60,self.now+5,[123])
+        with self.assertRaisesRegex(ValueError,'Incomplete'):
+            self.ledger.sync(self.now+20)
+        with self.ledger.connect() as db:
+            self.assertIsNone(db.execute("SELECT value FROM meta WHERE key='metrics_start'").fetchone())
+        self.assertEqual(self.node()['used_bytes'],30)
+        self.native_point(60,self.now+5,[123,321])
+        self.ledger.sync(self.now+20)
+        with self.assertRaisesRegex(ValueError,'differs'):
+            TrafficLedger(self.source,self.state,metrics_start=self.now-60).sync(self.now+20)
+
+    def test_uncaptured_utc_daily_only_traffic_is_not_assigned_to_wrong_billing_date(self):
+        self.native_source()
+        start=int(timestamp('2026-11-01T00:00:00Z'))
+        self.ledger=TrafficLedger(self.source,self.state,metrics_start=start)
+        self.native_point(86400,start+1,[10000,20000],count=100,last=start+86399)
+        with self.assertRaisesRegex(ValueError,'daily traffic'):
+            self.ledger.sync(start+3*86400)
+
     def test_requests_share_precomputed_data_but_filter_nodes_and_isolate_outputs(self):
         with source_db(self.source) as db:
             db.execute("INSERT INTO clients VALUES('b','private',0,'sum',1,NULL)")
