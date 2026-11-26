@@ -15,6 +15,7 @@ UTC = dt.timezone.utc
 BILLING_TZ = dt.timezone(dt.timedelta(hours=8))
 BUCKET_SECONDS = 15 * 60
 COUNTER_OVERCOUNT_MIN = 64 * 1024 ** 2
+GIB = 1024 ** 3
 
 
 def timestamp(value):
@@ -124,6 +125,10 @@ class TrafficLedger:
                     download_anchor INTEGER NOT NULL, applied_at REAL NOT NULL,
                     PRIMARY KEY(uuid, period_start)
                 );
+                CREATE TABLE IF NOT EXISTS billing_reset_days (
+                    uuid TEXT PRIMARY KEY, reset_day INTEGER NOT NULL CHECK(reset_day BETWEEN 1 AND 31),
+                    source_day INTEGER
+                );
                 CREATE INDEX IF NOT EXISTS buckets_time ON buckets(bucket);
                 CREATE TABLE IF NOT EXISTS bucket_corrections (
                     uuid TEXT NOT NULL, bucket INTEGER NOT NULL,
@@ -199,6 +204,7 @@ class TrafficLedger:
         try:
             source.execute('BEGIN')
             with self.connect() as state:
+                state.execute('BEGIN IMMEDIATE')
                 previous_sync = state.execute("SELECT value FROM meta WHERE key='last_sync'").fetchone()
                 last_sync = float(previous_sync[0]) if previous_sync else now - 62 * 86400
                 tables = {row[0] for row in source.execute(
@@ -217,6 +223,7 @@ class TrafficLedger:
                     + (',traffic_baseline_usage' if 'traffic_baseline_usage' in columns else '')
                     + ' FROM clients').fetchall()
                 previous_nodes = {r['uuid']: dict(r) for r in state.execute('SELECT * FROM clients')}
+                reset_days = {row['uuid']: row for row in state.execute('SELECT * FROM billing_reset_days')}
                 for node in nodes:
                     uuid = node['uuid']
                     quota = nonnegative(node['traffic_limit'])
@@ -224,6 +231,12 @@ class TrafficLedger:
                     previous = previous_nodes.get(uuid, {})
                     reset_day = node['traffic_reset_day'] if 'traffic_reset_day' in columns else previous.get('reset_day')
                     day = max(1, min(31, int(reset_day or 1)))
+                    override = reset_days.get(uuid)
+                    if override:
+                        if 'traffic_reset_day' not in columns or override['source_day'] == day:
+                            day = override['reset_day']
+                        else:
+                            state.execute('DELETE FROM billing_reset_days WHERE uuid=?', (uuid,))
                     baseline = node['traffic_baseline_usage'] if 'traffic_baseline_usage' in columns else previous.get('baseline')
                     # Existing legacy baselines have no timestamp and are not
                     # reapplied during migration. A later explicit edit is a
@@ -235,7 +248,7 @@ class TrafficLedger:
                         else:
                             upload, download = self._totals(state, uuid, start, end)
                             state.execute('INSERT OR REPLACE INTO calibrations VALUES(?,?,?,?,?,?,?,?)',
-                                          (uuid, start, day, mode, nonnegative(float(baseline) * 1024 ** 3), upload, download, now))
+                                          (uuid, start, day, mode, nonnegative(float(baseline) * GIB), upload, download, now))
                     state.execute('''INSERT INTO clients VALUES(?,?,?,?,?,?) ON CONFLICT(uuid) DO UPDATE SET
                         name=excluded.name,quota=excluded.quota,mode=excluded.mode,reset_day=excluded.reset_day,baseline=excluded.baseline
                         WHERE clients.name!=excluded.name OR clients.quota!=excluded.quota OR clients.mode!=excluded.mode
@@ -244,6 +257,7 @@ class TrafficLedger:
                 active_ids = {node['uuid'] for node in nodes}
                 for uuid in set(previous_nodes) - active_ids:
                     state.execute('DELETE FROM clients WHERE uuid=?', (uuid,))
+                    state.execute('DELETE FROM billing_reset_days WHERE uuid=?', (uuid,))
                 state.execute('DELETE FROM observations WHERE bucket<?', (now - 2 * 86400,))
                 state.execute('DELETE FROM buckets WHERE bucket<?', (now - 400 * 86400,))
                 state.execute('DELETE FROM counter_overcounts WHERE bucket<?', (now - 400 * 86400,))
@@ -253,6 +267,50 @@ class TrafficLedger:
             source.close()
         self._read_at(now)
         return len(nodes)
+
+    def billing_settings(self, uuid, changes=None, now=None):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE' if changes else 'BEGIN')
+            now = time.time() if now is None else now
+            client = db.execute('SELECT reset_day,mode FROM clients WHERE uuid=?', (uuid,)).fetchone()
+            if not client:
+                return None
+            day = client['reset_day']
+            mode = client['mode']
+            start, end = cycle_bounds(now, day)
+            if changes:
+                if changes.get('period_start') != iso_time(start):
+                    raise ValueError('账期已变化，请重新打开流量设置。')
+                new_day = changes.get('reset_day', day)
+                if new_day != day:
+                    with closing(sqlite3.connect(self.source_path.as_uri() + '?mode=ro', uri=True, timeout=10)) as source:
+                        columns = {r[1] for r in source.execute('PRAGMA table_info(clients)')}
+                        row = source.execute('SELECT traffic_reset_day FROM clients WHERE uuid=?', (uuid,)).fetchone() if 'traffic_reset_day' in columns else None
+                    source_day = max(1, min(31, int(row[0] or 1))) if row else None
+                    db.execute('INSERT OR REPLACE INTO billing_reset_days VALUES(?,?,?)', (uuid, new_day, source_day))
+                    db.execute('UPDATE clients SET reset_day=? WHERE uuid=?', (new_day, uuid))
+                    day = new_day
+                    start, end = cycle_bounds(now, day)
+            calibration = db.execute('''SELECT amount FROM calibrations
+                WHERE uuid=? AND period_start=? AND reset_day=? AND mode=?''',
+                (uuid, start, day, mode)).fetchone()
+            amount = calibration['amount'] if calibration else None
+            if changes and 'used_gib' in changes:
+                value = changes['used_gib']
+                requested = nonnegative(value * GIB) if value is not None else None
+                if requested != amount:
+                    if requested is None:
+                        db.execute('DELETE FROM calibrations WHERE uuid=? AND period_start=?', (uuid, start))
+                    else:
+                        last_sync = db.execute("SELECT value FROM meta WHERE key='last_sync'").fetchone()
+                        if not last_sync or now - float(last_sync['value']) >= 120:
+                            raise ValueError('账本暂未同步，请稍后校准。')
+                        upload, download = self._totals(db, uuid, start, end)
+                        db.execute('INSERT OR REPLACE INTO calibrations VALUES(?,?,?,?,?,?,?,?)',
+                                   (uuid, start, day, mode, requested, upload, download, now))
+                    amount = requested
+            return {'reset_day': day, 'period_start': iso_time(start),
+                    'calibrated_gib': amount / GIB if amount is not None else None}
 
     def _sync_metrics(self, state, now, stored_start, last_sync):
         # v1.6 imports old records as hourly P95 representatives. Even its

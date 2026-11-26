@@ -50,7 +50,7 @@ KOMARI_URL=https://monitor.example.com sh /root/komari-unlock-install.sh
 ## 设置迁移
 
 - 旧的 `backagroundAlignment` 拼写自动迁移为 `backgroundAlignment`。
-- 流量配额和计费方向在核心节点管理中设置。已保留自定义账期字段的主控可通过 `/opt/komari-maintenance/manage_billing.py --source /opt/komari/data/komari.db --uuid <节点 UUID>` 查看重置日和校准值。使用 `--help` 查看修改参数。
+- 流量配额和计费方向在核心节点管理中设置。管理员登录后，打开机器详情右上角的「流量设置」，可编辑每月重置日和本期已用流量。网页保存的设置写入配套服务的 `ledger.sqlite`，由日常备份涵盖。本期校准随账期到期失效。升级配套服务时，将示例中的 `/api/purcarte/billing` 路由加入现有 HTTPS 配置。若手动修改旧主控的重置日字段，账本下次同步时会采用该修改。
 - 旧版写死在源码的特殊节点任务不再公开内置：升级后在主题设置的“机器卡片 → 各节点卡片延迟任务”选择原任务。
 - 网格固定使用连续流量条和时间线；表格圆环/条形样式的选项只控制表格。浏览器偏好和站点默认设置分开保存。
 - 流量预测与流媒体标签可独立隐藏。关掉显示开关不会删除账本或检测结果，也不会触发检测。

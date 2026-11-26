@@ -15,6 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ledger import TrafficLedger
 from unlock_service import UnlockService, UnlockError
 
+BILLING_PATH = '/api/purcarte/billing'
+
 
 class CoreClient:
     """Direct connections to the configured core; credentials are per request."""
@@ -199,6 +201,45 @@ def main():
         def auth_headers(self):
             return {key: self.headers[key] for key in ('Cookie', 'Authorization') if self.headers.get(key)}
 
+        def require_admin_session(self):
+            cookie = self.headers.get('Cookie')
+            if not cookie or core.get('/api/me', {'Cookie': cookie}).get('logged_in') is not True:
+                raise UnlockError(403, '请以管理员身份登录后管理流量。')
+            return {'Cookie': cookie}
+
+        def require_same_origin(self):
+            origins = self.headers.get_all('Origin')
+            fetch_site = self.headers.get('Sec-Fetch-Site')
+            if not public_origin or origins != [public_origin] or fetch_site in ('cross-site', 'same-site'):
+                raise UnlockError(403, '请求来源无效')
+
+        def handle_billing(self, uuid, changes=None):
+            headers = self.require_admin_session()
+            if not isinstance(uuid, str) or not 1 <= len(uuid) <= 128:
+                raise UnlockError(400, '节点标识无效。')
+            if not any(node['uuid'] == uuid for node in core.visible_nodes(headers)):
+                raise UnlockError(404, '节点不存在。')
+            if changes is not None:
+                if (not {'period_start'}.issubset(changes)
+                        or not set(changes) <= {'period_start', 'reset_day', 'used_gib'}
+                        or not ({'reset_day', 'used_gib'} & set(changes))
+                        or not isinstance(changes['period_start'], str)):
+                    raise UnlockError(400, '流量设置格式无效。')
+                if 'reset_day' in changes:
+                    day = changes['reset_day']
+                    if type(day) is not int or not 1 <= day <= 31:
+                        raise UnlockError(400, '重置日须为 1 到 31 的整数。')
+                value = changes.get('used_gib')
+                if value is not None and (type(value) not in (int, float) or not 0 <= value < 2**33):
+                    raise UnlockError(400, '校准值须为有效的非负 GiB 数值。')
+            try:
+                settings = ledger.billing_settings(uuid, changes)
+            except ValueError as error:
+                raise UnlockError(409, str(error)) from error
+            if settings is None:
+                raise UnlockError(409, '节点账本尚未同步，请稍后重试。')
+            self.send_json(200, {'status': 'success', 'data': settings})
+
         def do_GET(self):
             if self.path == '/_health':
                 try:
@@ -215,10 +256,14 @@ def main():
                 except UnlockError as error:
                     self.send_json(error.status, {'status':'error','message':error.message})
                 return
-            if path not in ('/api/purcarte/traffic', '/api/plugin/net-forecast/overview', '/api/plugin/unlock-test/snapshot'):
+            if path not in (BILLING_PATH, '/api/purcarte/traffic', '/api/plugin/net-forecast/overview', '/api/plugin/unlock-test/snapshot'):
                 self.send_json(404, {'status': 'error'})
                 return
             try:
+                if path == BILLING_PATH:
+                    query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                    self.handle_billing(query.get('uuid', [''])[0])
+                    return
                 # Delegate visibility and private-site authorization to Komari.
                 nodes = core.visible_nodes(self.auth_headers())
                 if path == '/api/plugin/unlock-test/snapshot':
@@ -229,6 +274,8 @@ def main():
                         self.send_json(200, ledger.forecast_input(visible))
                     else:
                         self.send_json(200, {'status': 'success', 'data': ledger.snapshot(visible)})
+            except UnlockError as error:
+                self.send_json(error.status, {'status': 'error', 'message': error.message})
             except urllib.error.HTTPError as error:
                 self.send_json(error.code if error.code in (401, 403) else 503, {'status': 'error', 'message': 'Traffic snapshot unavailable'})
             except Exception:
@@ -237,20 +284,21 @@ def main():
 
         def do_POST(self):
             path = self.path.split('?')[0]
-            if path not in ('/api/plugin/unlock-test/probe','/api/plugin/unlock-test/worker/poll','/api/plugin/unlock-test/worker/report','/api/plugin/unlock-test/worker/rebind'):
+            if path not in (BILLING_PATH, '/api/plugin/unlock-test/probe','/api/plugin/unlock-test/worker/poll','/api/plugin/unlock-test/worker/report','/api/plugin/unlock-test/worker/rebind'):
                 self.send_json(404, {'status':'error'})
                 return
             try:
                 size = int(self.headers.get('Content-Length','0'))
-                if not 0 < size <= 300000 or self.headers.get('Content-Type','').split(';')[0] != 'application/json':
+                if not 0 < size <= (4096 if path == BILLING_PATH else 300000) or self.headers.get('Content-Type','').split(';')[0] != 'application/json':
                     raise UnlockError(400, '需要有效的 JSON 请求')
                 data = json.loads(self.rfile.read(size))
                 if not isinstance(data,dict):raise UnlockError(400,'请求格式无效')
+                if path == BILLING_PATH:
+                    self.require_same_origin()
+                    self.handle_billing(data.pop('uuid', None), data)
+                    return
                 if path.endswith('/probe'):
-                    origins = self.headers.get_all('Origin')
-                    fetch_site = self.headers.get('Sec-Fetch-Site')
-                    if not public_origin or origins != [public_origin] or fetch_site in ('cross-site', 'same-site'):
-                        raise UnlockError(403,'请求来源无效')
+                    self.require_same_origin()
                     headers = self.auth_headers()
                     me = core.get('/api/me', headers)
                     if not me.get('logged_in'):raise UnlockError(403,'请以管理员身份登录后检测')
@@ -274,15 +322,15 @@ def main():
                 self.send_json(error.status,{'status':'error','message':error.message,'code':error.code})
             except urllib.error.HTTPError as error:
                 if error.code in (401, 403):
-                    self.send_json(error.code, {'status': 'error', 'message': '请以管理员身份登录后检测'})
+                    self.send_json(error.code, {'status': 'error', 'message': '请以管理员身份登录。'})
                 else:
                     logging.warning('Core rejected unlock request with HTTP %s', error.code)
-                    self.send_json(503, {'status': 'error', 'message': '检测服务暂不可用'})
+                    self.send_json(503, {'status': 'error', 'message': '服务暂不可用'})
             except (ValueError,UnicodeDecodeError):
                 self.send_json(400,{'status':'error','message':'请求格式无效'})
             except Exception:
                 logging.exception('Unlock request failed')
-                self.send_json(503,{'status':'error','message':'检测服务暂不可用'})
+                self.send_json(503,{'status':'error','message':'服务暂不可用'})
 
         def send_json(self, status, payload):
             body = json.dumps(payload, ensure_ascii=False).encode()

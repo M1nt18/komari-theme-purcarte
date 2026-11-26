@@ -335,6 +335,29 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(next_cycle['used_bytes'], 0)
         self.assertFalse(next_cycle['calibrated'])
 
+    def test_dashboard_billing_persists_and_calibration_expires(self):
+        self.sample('2026-11-14 01:00:00', 10, 20)
+        self.ledger.sync(self.now)
+        before = self.ledger.billing_settings('a', now=self.now)
+        self.assertIsNone(before['calibrated_gib'])
+        edit = {'period_start': before['period_start'], 'reset_day': 14, 'used_gib': 1}
+        saved = self.ledger.billing_settings('a', edit, self.now)
+        self.assertEqual(saved['reset_day'], 14)
+        self.assertEqual(self.node()['used_bytes'], 1024 ** 3)
+        self.sample('2026-11-14 04:04:00', 5, 6)
+        self.ledger = TrafficLedger(self.source, self.state)
+        self.ledger.sync(self.now + 30)
+        self.assertEqual(self.node()['used_bytes'], 1024 ** 3 + 11)
+        self.assertEqual(self.node()['reset_day'], 14)
+        rollover = timestamp('2026-12-13T16:00:00Z')
+        self.assertIsNone(self.ledger.billing_settings('a', now=rollover)['calibrated_gib'])
+        with self.assertRaisesRegex(ValueError, '账期已变化'):
+            self.ledger.billing_settings('a', {'period_start': saved['period_start'], 'used_gib': 1}, rollover)
+        with source_db(self.source) as db:
+            db.execute('UPDATE clients SET traffic_reset_day=15')
+        self.ledger.sync(self.now + 45)
+        self.assertEqual(self.node()['reset_day'], 15)
+
     def test_visibility_partial_history_and_no_core_mutation(self):
         before = self.source.read_bytes()
         self.sample('2026-11-14 01:00:00', 10, 20)

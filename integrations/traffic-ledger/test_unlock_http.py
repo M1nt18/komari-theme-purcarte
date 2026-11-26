@@ -9,6 +9,7 @@ import time
 import unittest
 import urllib.request
 import urllib.error
+from contextlib import closing
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -147,6 +148,28 @@ class HTTPTests(unittest.TestCase):
                 else:self.fail('test server did not start')
                 self.assertEqual(call(prefix+'/probe',{'clients':['a']})[0],403)
                 admin={'Cookie':'session_token=test-admin','Origin':'https://monitor.example.test'}
+                billing='/api/purcarte/billing'
+                self.assertEqual(call(billing+'?uuid=a')[0],403)
+                before=call(billing+'?uuid=a',headers=admin)[1]['data']
+                edit={'uuid':'a','period_start':before['period_start'],'reset_day':13,'used_gib':1.25}
+                self.assertEqual(call(billing,edit,{'Cookie':admin['Cookie']})[0],403)
+                self.assertEqual(call(billing,edit,{'Origin':admin['Origin']})[0],403)
+                self.assertEqual(call(billing,edit,{**admin,'Sec-Fetch-Site':'same-site'})[0],403)
+                self.assertEqual(call(billing,{**edit,'reset_day':True},admin)[0],400)
+                self.assertEqual(call(billing,{**edit,'uuid':'missing'},admin)[0],404)
+                saved=call(billing,edit,admin)
+                self.assertEqual(saved[0],200)
+                self.assertEqual(saved[1]['data']['reset_day'],13)
+                self.assertEqual(saved[1]['data']['calibrated_gib'],1.25)
+                quota=call('/api/purcarte/traffic')[1]['data']['nodes']['a']
+                self.assertEqual(quota['used_bytes'],1342177280)
+                self.assertEqual(quota['reset_day'],13)
+                self.assertEqual(call(billing,edit,admin)[0],409)
+                clear={'uuid':'a','period_start':saved[1]['data']['period_start'],'used_gib':None}
+                self.assertIsNone(call(billing,clear,admin)[1]['data']['calibrated_gib'])
+                self.assertEqual(call('/api/purcarte/traffic')[1]['data']['nodes']['a']['used_bytes'],0)
+                with closing(sqlite3.connect(source)) as original:
+                    self.assertEqual(original.execute("SELECT traffic_reset_day,traffic_baseline_usage FROM clients WHERE uuid='a'").fetchone(), (1, None))
                 self.assertEqual(call(prefix+'/probe',{'clients':['a']},{'Cookie':admin['Cookie']})[0],403)
                 self.assertEqual(call(prefix+'/probe',{'clients':['a']},{**admin,'Origin':'https://other.example'})[0],403)
                 for fetch_site in ('same-site', 'cross-site'):

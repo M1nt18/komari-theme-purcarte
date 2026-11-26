@@ -15,6 +15,7 @@ import { useAppConfig } from "@/config";
 import { useIsMobile } from "@/hooks/useMobile";
 import { useLocale } from "@/config/hooks";
 import { Card } from "@/components/ui/card";
+import { NodeBillingSettings } from "@/features/traffic-budget/NodeBillingSettings";
 const UnlockPanel = lazy(() => import("@/features/unlock/UnlockPanel")
   .then(module => ({ default: memo(module.default) })));
 const TrafficForecastPanel = lazy(() => import("@/features/netforecast/TrafficForecastPanel")
@@ -32,7 +33,8 @@ const InstancePage = () => {
   );
   const [loadHours, setLoadHours] = useState<number>(0);
   const [pingHours, setPingHours] = useState<number>(1); // 默认1小时
-  const { enableInstanceDetail, enablePingChart, enableTrafficForecast, enableUnlockTest, publicSettings } =
+  const [billingNode, setBillingNode] = useState<string | null>(null);
+  const { enableInstanceDetail, enablePingChart, enableTrafficForecast, enableUnlockTest, publicSettings, siteStatus } =
     useAppConfig();
   const isMobile = useIsMobile();
   const { t } = useLocale();
@@ -106,6 +108,8 @@ const InstancePage = () => {
   }, [staticNode, liveData]);
 
   const node = staticNode;
+  const canManageBilling = siteStatus === "authenticated" || siteStatus === "private-authenticated";
+  const billingOpen = canManageBilling && billingNode === uuid;
   const isOnline = stats?.online ?? false;
 
   useEffect(() => {
@@ -155,8 +159,13 @@ const InstancePage = () => {
             {isOnline ? t("node.online") : t("node.offline")}
           </span>
         </div>
+        {canManageBilling && <Button type="button" size="sm" variant="outline" className="ml-2 shrink-0"
+          aria-expanded={billingOpen} onClick={() => setBillingNode(billingOpen ? null : node.uuid)}>
+          流量设置
+        </Button>}
       </Card>
 
+      {billingOpen && <Card><NodeBillingSettings key={node.uuid} uuid={node.uuid} /></Card>}
       {enableInstanceDetail && node && <Instance node={node} />}
 
       <div id="instance-chart-controls" className="flex flex-col items-center w-full space-y-4 scroll-mt-4">

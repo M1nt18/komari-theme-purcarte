@@ -6,6 +6,12 @@ location = /api/purcarte/traffic {
     proxy_set_header Cookie $http_cookie;
     proxy_set_header Authorization $http_authorization;
 }
+location = /api/purcarte/billing {
+    proxy_pass http://127.0.0.1:25776;
+    proxy_set_header Host $host;
+    proxy_set_header Cookie $http_cookie;
+    client_max_body_size 4k;
+}
 location = /api/plugin/net-forecast/overview {
     proxy_pass http://127.0.0.1:25776;
     proxy_set_header Host $host;
