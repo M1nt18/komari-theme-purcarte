@@ -46,13 +46,18 @@ export const NodeCardPingChart = memo(function NodeCardPingChart({
   const selectedData = useMemo(() => {
     if (!enableCardPingChart || !pingHistory) return null;
     const tasks = selectCardPingTasks(pingHistory.tasks ?? [], selectedTaskName, cardPingChartFallbackTaskId);
-    return tasks.length ? cardPingData(
-      pingHistory.records ?? [], tasks, cardPingChartMaxBars, cardPingChartHours, windowEnd
-    ) : null;
+    return tasks.length ? {
+      ...cardPingData(pingHistory.records ?? [], tasks, cardPingChartMaxBars, cardPingChartHours, windowEnd),
+      targets: tasks.map(task => task.name).join("、"),
+      averaged: tasks.length > 1,
+    } : null;
   }, [enableCardPingChart, selectedTaskName, pingHistory,
     cardPingChartMaxBars, cardPingChartFallbackTaskId, cardPingChartHours, windowEnd]);
 
   if (!enableCardPingChart) return null;
+  const routeTitle = selectedData
+    ? `${node.name} → ${selectedData.targets}${selectedData.averaged ? "（多任务平均）" : ""}`
+    : undefined;
 
   if (compact) {
     return (
@@ -60,7 +65,7 @@ export const NodeCardPingChart = memo(function NodeCardPingChart({
         <ActivityIcon className="size-4 flex-shrink-0 text-(--accent-11)" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-1">
-            <span className="truncate">
+            <span className="truncate" title={routeTitle}>
               {selectedData && selectedData.stats.latestValue !== null
                 ? Math.round(selectedData.stats.latestValue) + "ms"
                 : loading
@@ -78,7 +83,7 @@ export const NodeCardPingChart = memo(function NodeCardPingChart({
               {selectedData ? selectedData.stats.loss.toFixed(1) + "%" : "--"}
             </span>
           </div>
-          <LatencyBars values={selectedData?.bars ?? []} />
+          <LatencyBars values={selectedData?.bars ?? []} title={routeTitle} />
         </div>
       </div>
     );
@@ -88,8 +93,8 @@ export const NodeCardPingChart = memo(function NodeCardPingChart({
     <div ref={ref} className="grid grid-cols-2 gap-4 border-t border-(--accent-4)/50 py-2 text-xs">
       <div className="min-h-16 rounded-lg px-3 py-2">
         <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-secondary-foreground">{t("instancePage.latency")}</span>
-          <strong className="font-medium tabular-nums text-(--accent-11)">
+          <span className="text-secondary-foreground" title={routeTitle}>{t("instancePage.latency")}</span>
+          <strong className="font-medium tabular-nums text-(--accent-11)" title={routeTitle}>
             {selectedData && selectedData.stats.latestValue !== null
               ? Math.round(selectedData.stats.latestValue) + " ms"
               : loading
@@ -97,7 +102,7 @@ export const NodeCardPingChart = memo(function NodeCardPingChart({
               : "--"}
           </strong>
         </div>
-        <LatencyBars values={selectedData?.bars ?? []} />
+        <LatencyBars values={selectedData?.bars ?? []} title={routeTitle} />
       </div>
       <div className="min-h-16 rounded-lg px-3 py-2">
         <div className="mb-1 flex items-center justify-between gap-2">
@@ -115,7 +120,7 @@ export const NodeCardPingChart = memo(function NodeCardPingChart({
       </div>
     </div>
   );
-}, (previous, next) => previous.node.uuid === next.node.uuid
+}, (previous, next) => previous.node.uuid === next.node.uuid && previous.node.name === next.node.name
   && previous.compact === next.compact);
 
 function getLatencyColor(value: number): string {
@@ -125,20 +130,22 @@ function getLatencyColor(value: number): string {
   return YELLOW_COLOR;
 }
 
-function PingBars({ values, loss = false }: { values: (number | null)[]; loss?: boolean }) {
+function PingBars({ values, loss = false, title }: { values: (number | null)[]; loss?: boolean; title?: string }) {
   if (!values.length) {
     return <div className="h-2 min-w-0 flex-1" />;
   }
 
   const colors = values.map(value => value === null ? "#94a3b866" : value < 0 ? LOSS_COLOR
     : loss ? OK_COLOR + "bf" : getLatencyColor(value) + "f2");
-  return <div aria-hidden="true" title={values.includes(null) ? "灰色表示该时段没有采样" : undefined} className="h-9 preview-ping-chart-up min-w-0 flex-1"
+  const missing = values.includes(null) ? "灰色表示该时段没有采样" : undefined;
+  const hint = [title, missing].filter(Boolean).join("\n");
+  return <div aria-hidden="true" title={hint || undefined} className="h-9 preview-ping-chart-up min-w-0 flex-1"
     style={{ backgroundImage: pingBarStrip(colors, colors.length), backgroundSize: "100% 48%",
       backgroundRepeat: "no-repeat", backgroundPosition: "bottom" }} />;
 }
 
-function LatencyBars({ values }: { values: (number | null)[] }) {
-  return <PingBars values={values} />;
+function LatencyBars({ values, title }: { values: (number | null)[]; title?: string }) {
+  return <PingBars values={values} title={title} />;
 }
 
 function LossBars({ values }: { values: (number | null)[] }) {
